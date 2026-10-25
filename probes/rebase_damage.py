@@ -1,0 +1,17 @@
+import json, subprocess, time
+def mcp(*a): return subprocess.run(['python3', 'tools/mcp.py', *a], capture_output=True, text=True).stdout.strip()
+mcp('call', 'inject_input', json.dumps({"event": "throttle", "value": 0}))
+mcp('call', 'inject_input', json.dumps({"event": "brake", "value": 0}))
+# place car ON the tiles (past the ledge), repair, let it settle
+mcp('call', 'set_position', json.dumps({"pos": {"x": 260, "y": 2064, "z": 2.0}, "rot": {"x": 0, "y": 0, "z": 0.7071, "w": 0.7071}}))
+time.sleep(2.5)
+print("settled dmg:", mcp('call', 'get_vehicle_damage'))
+mcp('call', 'inject_input', json.dumps({"event": "parkingbrake", "value": 0}))
+mcp('call', 'inject_input', json.dumps({"event": "throttle", "value": 0.5}))
+time.sleep(3)
+print("pre-rebase dmg:", mcp('call', 'get_vehicle_damage'), json.loads(mcp('call', 'get_vehicle'))['speed'])
+print("REBASE:", mcp('lua', 'REBASE_DY=-3000\n' + open('probes/p6_rebase.lua').read()))
+time.sleep(2)
+print("post-rebase dmg:", mcp('call', 'get_vehicle_damage'), json.loads(mcp('call', 'get_vehicle'))['speed'])
+mcp('call', 'inject_input', json.dumps({"event": "throttle", "value": 0}))
+mcp('call', 'inject_input', json.dumps({"event": "brake", "value": 1}))

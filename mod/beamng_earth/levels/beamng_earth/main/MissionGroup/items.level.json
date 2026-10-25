@@ -1,0 +1,3 @@
+{"name":"PlayerDropPoints","class":"SimGroup","persistentId":"3b0f6f0e-8f5e-4a51-9a59-0b8e2f6a1c02","__parent":"MissionGroup","enabled":"1"}
+{"name":"Sky","class":"SimGroup","persistentId":"3b0f6f0e-8f5e-4a51-9a59-0b8e2f6a1c03","__parent":"MissionGroup"}
+{"name":"Weather","class":"SimGroup","persistentId":"3b0f6f0e-8f5e-4a51-9a59-0b8e2f6a1c20","__parent":"MissionGroup"}

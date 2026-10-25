@@ -1,0 +1,12 @@
+{
+  "displayName": "Keyboard",
+  "bindings":[
+    {"control":"ctrl shift t", "action":"nrails_snapToRail"},
+    {"control":"ctrl shift g", "action":"nrails_reloadArea"},
+    {"control":"ctrl shift u", "action":"nrails_toggleWindow"},
+    {"control":"ctrl shift left", "action":"nrails_switchLeft"},
+    {"control":"ctrl shift up", "action":"nrails_switchStraight"},
+    {"control":"ctrl shift right", "action":"nrails_switchRight"},
+    {"control":"ctrl shift i", "action":"nrails_toggleHelp"}
+  ]
+}

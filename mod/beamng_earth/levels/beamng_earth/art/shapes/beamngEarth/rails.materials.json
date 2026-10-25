@@ -1,0 +1,67 @@
+{
+  "bne_rail_steel": {
+    "name": "bne_rail_steel",
+    "mapTo": "bne_rail_steel",
+    "class": "Material",
+    "version": 1.5,
+    "persistentId": "3f0b8c52-6a1e-5d7b-9c84-1e2a7d40b101",
+    "Stages": [
+      {
+        "baseColorMap": "/assets/materials/tileable/metal/metal_paint/metal_paint_d.color.dds",
+        "normalMap": "/assets/materials/tileable/metal/metal_paint/metal_paint_nm.normal.dds",
+        "roughnessFactor": 0.45,
+        "metallicFactor": 0.75,
+        "baseColorFactor": [0.34, 0.30, 0.27, 1]
+      },
+      {},
+      {},
+      {}
+    ],
+    "groundType": "METAL",
+    "translucent": false
+  },
+  "bne_rail_sleeper": {
+    "name": "bne_rail_sleeper",
+    "mapTo": "bne_rail_sleeper",
+    "class": "Material",
+    "version": 1.5,
+    "persistentId": "8d1c27e4-0b39-5f62-a7d5-5c3e91f0b202",
+    "Stages": [
+      {
+        "baseColorMap": "/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_b.color.png",
+        "normalMap": "/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_nm.normal.png",
+        "roughnessMap": "/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_r.data.png",
+        "ambientOcclusionMap": "/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_ao.data.png",
+        "metallicFactor": 0,
+        "baseColorFactor": [0.66, 0.65, 0.62, 1]
+      },
+      {},
+      {},
+      {}
+    ],
+    "groundType": "CONCRETE",
+    "translucent": false
+  },
+  "bne_rail_ballast": {
+    "name": "bne_rail_ballast",
+    "mapTo": "bne_rail_ballast",
+    "class": "Material",
+    "version": 1.5,
+    "persistentId": "c47e9a10-5f2d-5b88-8e61-2a9d03c4b303",
+    "Stages": [
+      {
+        "baseColorMap": "/assets/materials/terrain/rock/t_pebbles/t_pebbles_b.png",
+        "normalMap": "/assets/materials/terrain/rock/t_pebbles/t_pebbles_nm.png",
+        "roughnessMap": "/assets/materials/terrain/rock/t_pebbles/t_pebbles_r.png",
+        "ambientOcclusionMap": "/assets/materials/terrain/rock/t_pebbles/t_pebbles_ao.png",
+        "metallicFactor": 0,
+        "baseColorFactor": [0.60, 0.58, 0.55, 1]
+      },
+      {},
+      {},
+      {}
+    ],
+    "groundType": "GRAVEL",
+    "translucent": false
+  }
+}

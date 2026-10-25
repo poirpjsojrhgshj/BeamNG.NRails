@@ -1,0 +1,161 @@
+{
+  "apps": [
+    {
+      "appName": "forcedInduction",
+      "placement": {
+        "bottom": "285px",
+        "height": "150px",
+        "left": "",
+        "position": "absolute",
+        "right": "0px",
+        "top": "",
+        "width": "150px"
+      },
+      "settings": {
+        "noCockpit": true
+      }
+    },
+    {
+      "appName": "simplePowertrainControl",
+      "placement": {
+        "bottom": "0px",
+        "height": "170px",
+        "position": "absolute",
+        "right": "260px",
+        "width": "230px"
+      }
+    },
+    {
+      "appName": "damageApp",
+      "placement": {
+        "bottom": "444px",
+        "height": "280px",
+        "left": "5px",
+        "position": "absolute",
+        "right": "",
+        "top": "",
+        "width": "158px"
+      },
+      "appVersion": 2
+    },
+    {
+      "appName": "navigation",
+      "appVersion": 5,
+      "placement": {
+        "bottom": "90px",
+        "height": "350px",
+        "left": "5px",
+        "width": "300px"
+      }
+    },
+    {
+      "appName": "tacho2",
+      "appVersion": 1,
+      "placement": {
+        "bottom": "5px",
+        "height": "300px",
+        "right": "5px",
+        "width": "300px"
+      },
+      "settings": {
+        "noCockpit": true
+      }
+    },
+    {
+      "appName": "inputHints",
+      "appVersion": 8,
+      "placement": {
+        "bottom": "",
+        "height": "600px",
+        "left": "",
+        "position": "absolute",
+        "right": "0px",
+        "top": "0px",
+        "width": "450px"
+      }
+    },
+    {
+      "appName": "topLeftApps",
+      "appVersion": 2,
+      "placement": {
+        "bottom": "",
+        "height": "600px",
+        "left": "0px",
+        "position": "absolute",
+        "right": "",
+        "top": "0px",
+        "width": "380px"
+      }
+    },
+    {
+      "appName": "topCenterApps",
+      "appVersion": 1,
+      "placement": {
+        "bottom": "",
+        "height": "350px",
+        "left": 0,
+        "margin": "auto",
+        "position": "absolute",
+        "right": 0,
+        "top": "100px",
+        "width": "610px"
+      }
+    },
+    {
+      "appName": "dragRace",
+      "appVersion": 2,
+      "placement": {
+        "height": "800px",
+        "right": "0px",
+        "top": "30px",
+        "width": "260px"
+      }
+    },
+    {
+      "appName": "beamngEarthStatus",
+      "appVersion": 1,
+      "placement": {
+        "top": "0px",
+        "left": 0,
+        "right": 0,
+        "margin": "auto",
+        "position": "absolute",
+        "width": "700px",
+        "height": "64px"
+      }
+    },
+    {
+      "appName": "beamngEarthBanner",
+      "appVersion": 1,
+      "placement": {
+        "top": "36px",
+        "left": 0,
+        "right": 0,
+        "margin": "auto",
+        "position": "absolute",
+        "width": "700px",
+        "height": "60px"
+      }
+    },
+    {
+      "appName": "beamngEarthCredits",
+      "appVersion": 2,
+      "placement": {
+        "bottom": "0px",
+        "left": "0px",
+        "position": "absolute",
+        "width": "560px",
+        "height": "64px"
+      }
+    }
+  ],
+  "removedApps": {
+    "utilityApps": 1,
+    "gameplayApps": 1,
+    "secondaryApps": 1,
+    "messagesTasksApps": 2
+  },
+  "title": ".Earth",
+  "type": "beamngEarth",
+  "version": 4
+}

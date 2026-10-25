@@ -1,0 +1,41 @@
+name: Map issue
+description: Something in the world is wrong, missing or broken at a place (roads, buildings, terrain, water, trees...)
+title: "[Map issue] "
+labels: ["map"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tip: press **Ctrl+Shift+E** in the game at the spot and pick "Map issue". It fills all of this in for you
+        (issue.md in the report folder; `python3 tools/reports.py issue` opens this page with it).
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Latitude, longitude (or an OpenStreetMap link) of the problem
+      placeholder: "39.283100, -76.593400  or  https://www.openstreetmap.org/?mlat=...&mlon=..."
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong?
+      description: What you see, and what it looks like in reality (a link to a real photo helps).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to get there / see it
+      description: Where you were driving or flying from, the direction you were looking, the time of day.
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag screenshot.jpg from the report folder (or any screenshot) here.
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware / settings
+      description: Paste the "Hardware / settings" section of issue.md (or hardware.json) from the report folder.
+      render: markdown

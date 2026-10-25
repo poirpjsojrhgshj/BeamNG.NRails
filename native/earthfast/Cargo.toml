@@ -1,0 +1,26 @@
+[package]
+name = "earthfast"
+version = "0.1.0"
+edition = "2021"
+description = "BeamNG.Earth's world server: geometry kernels in Rust (the hot Python loops; server/fast.py falls back to Python)"
+license = "MIT"
+
+[lib]
+name = "earthfast"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py310"] }
+numpy = "0.25"
+# GPU compute (gpu.rs): the per-pixel image work moved off the CPU when a GPU is there (Vulkan / DX12 / Metal)
+wgpu = { version = "25", default-features = false, features = ["wgsl", "vulkan", "dx12", "metal"] }
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[target.'cfg(windows)'.dependencies]
+pyo3 = { version = "0.25", features = ["generate-import-lib"] }   # links python3.dll without a Python install (cross builds)

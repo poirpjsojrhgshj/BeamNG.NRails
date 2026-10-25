@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+
+# local backups and logs
+backups/
+*.log
+
+# in-game test runs and screenshots (hundreds of MB): keep the written reports (*.md, *.json),
+# not the per-run folders
+docs/research/*/
+docs/research/*.jsonl
+
+# editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# agent worktrees
+.claude/
+tools/gcpatch/build/
+docs/research/streetview/
+docs/research/ortho/
+
+# install.py / tools/package.py output
+.venv/
+.beamng_earth.json
+dist/
+native/earthfast/target/
+build/
+.beamng_earthnrails.json
+native/serverlist/target/

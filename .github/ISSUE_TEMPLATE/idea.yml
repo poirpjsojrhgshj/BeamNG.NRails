@@ -1,0 +1,32 @@
+name: Idea / suggestion
+description: Something you would like BeamNG.Earth to have or do differently
+title: "[Idea / suggestion] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tip: press **Ctrl+Shift+E** in the game and pick "Idea / suggestion" to save a screenshot and the place with it.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What would you like, and why? What would it be like to drive / fly with it?
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Location (optional)
+      description: A place that shows it, as latitude, longitude or an OpenStreetMap link
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or references (optional)
+      description: Screenshots, real photos, other games or mods that do it well.
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware / settings (optional)
+      description: Paste the "Hardware / settings" section of issue.md if it matters for the idea.
+      render: markdown

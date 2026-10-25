@@ -1,0 +1,46 @@
+name: Performance issue
+description: Low frame rate, stutters or hitches, slow loading of the world
+title: "[Performance issue] "
+labels: ["performance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tip: press **Ctrl+Shift+Y** in the game while it happens: the **performance profiler** records 30 s of frame
+        times (and every hitch with its place), then opens the report window. issue.md in the report folder has
+        all of this filled in (`python3 tools/reports.py issue` opens this page with it).
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Latitude, longitude (or an OpenStreetMap link) where it happened
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens?
+      description: Stutters, low fps, the ground or far field loading late... and how fast you were going (mph).
+    validations:
+      required: true
+  - type: textarea
+    id: profiler
+    attributes:
+      label: Performance profiler numbers
+      description: From issue.md (fps avg, 1% low, worst frame, hitches), or what the game's FPS counter showed.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Where you started, the route, the vehicle, any settings you changed.
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware / settings
+      description: Paste the "Hardware / settings" section of issue.md (or hardware.json) from the report folder.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag screenshot.jpg from the report folder here.

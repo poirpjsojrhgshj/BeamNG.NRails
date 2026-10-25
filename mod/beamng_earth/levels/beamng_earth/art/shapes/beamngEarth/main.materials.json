@@ -1,0 +1,20 @@
+{
+  "bngEarthFar_v3": {
+    "name": "bngEarthFar_v3",
+    "mapTo": "bngEarthFar_v3",
+    "class": "Material",
+    "version": 1.5,
+    "persistentId": "6f1c2a3e-4b5d-4e6f-8a9b-0c1d2e3f4a5b",
+    "Stages": [
+      {
+        "baseColorMap": "/levels/beamng_earth/art/shapes/beamngEarth/far_palette.png",
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      {},
+      {},
+      {}
+    ],
+    "castShadows": false
+  }
+}

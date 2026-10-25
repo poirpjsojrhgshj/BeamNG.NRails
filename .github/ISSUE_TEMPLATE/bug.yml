@@ -1,0 +1,49 @@
+name: Bug
+description: Something broke (errors, the server or the mod stopped working, the car fell through the ground...)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tip: press **Ctrl+Shift+E** in the game right after it happens and pick "Bug". issue.md in the report folder has
+        the place, the mod's status and your hardware filled in (`python3 tools/reports.py issue` opens this page with it).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What broke, and what you expected instead. Error messages exactly as shown.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the server with ...
+        2. Teleport to ...
+        3. Drive north at 60 mph ...
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Latitude, longitude (or an OpenStreetMap link), if it happened at a place
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The server window's last lines, and/or beamng.log from the BeamNG.drive user folder (attach the file).
+      render: text
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware / settings
+      description: Paste the "Hardware / settings" section of issue.md (or hardware.json) from the report folder.
+      render: markdown
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag screenshot.jpg from the report folder here.

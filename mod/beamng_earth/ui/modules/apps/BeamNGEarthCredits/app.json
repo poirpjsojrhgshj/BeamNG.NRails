@@ -1,0 +1,21 @@
+{
+  "domElement": "<beamng-earth-credits></beamng-earth-credits>",
+  "name": "BeamNG.Earth: Data credits",
+  "types": [
+    "ui.apps.categories.utility"
+  ],
+  "description": "The sources of the map data around you (their licences ask for visible credit).",
+  "css": {
+    "bottom": "0px",
+    "left": "0px",
+    "height": "110px",
+    "width": "560px"
+  },
+  "author": "BeamNG.Earth",
+  "version": "1.0",
+  "directive": "beamngEarthCredits",
+  "appName": "beamngEarthCredits",
+  "category": "BeamNG.Earth",
+  "isAuxiliary": false,
+  "interactive": "no"
+}

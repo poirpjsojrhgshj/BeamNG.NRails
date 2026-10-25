@@ -1,0 +1,443 @@
+[
+ {
+  "key": "techniques",
+  "topic": "How terrain and world-streaming engines hide LOD popping and loading stutter, how they decide what to preload, and which of these techniques BeamNG.Earth can adopt without custom shaders",
+  "summary": "Shipping engines use four families of tricks. (1) Make the transition continuous in space: CDLOD and clipmap geomorphing, where vertices slide into the coarser mesh across a distance band. (2) Make it continuous in time: dithered or alpha cross-fade, with the old and new LOD both drawn for 0.25\u20131 s (Cesium for Unreal, Unreal, Unity, GTA V, NASA 3DTilesRendererJS, a Google Earth patent). (3) Never show a hole and never thrash: keep the parent until all its children are ready, apply hysteresis, and keep the sample grid world-locked so finer data never moves under the viewer (clipmaps). (4) Load the right thing first: priority = distance \u00d7 angle from the view direction, plus velocity, under a per-frame budget, with prefetch at known destinations, persistent disk caches and pre-built tiles.\n\nGeomorphing needs a vertex shader, so we can't use it. Fading does not strictly need one. The stock BeamNG 0.39 shaders already have two hooks:\n- A screen-door dither (\"fizzle\") driven by per-instance visibility.\n- A material layer flag `instanceOpacity` that multiplies opacity by the TSStatic's `instanceColor` alpha.\nTwo Lua-only fade options follow from this:\n- **Option A:** `instanceOpacity` + `alphaTest` + a noise pattern baked into the tile texture's alpha channel. Ramping `instanceColor` alpha then gives a dither dissolve.\n- **Option B:** pure transforms. Spawn the new tile a few metres low and raise it through the old one with `setPosition`.\nNeither option has been tested in-game yet.\n\n**Problem (2), the tile under the car changes.** The likely cause is not LOD at all. The terrain block's samples are not world-locked: spacing is 2048/1022 \u2248 2.0039 m and the block moves in 256 m steps, which is 127.75 samples, so every re-import resamples everything. Heights are also requantised per block. Clipmaps solve exactly this: keep samples on a fixed world grid and only fill the newly exposed L-shaped strip.\n\n**Problem (1), nearby popping.** Two things in our own code make it worse:\n- The far tile key includes the apron mask. So every terrain commit re-keys and re-streams the whole ring of L0 tiles around the block, about 1 km from the player.\n- Far tiles are only recomputed after `commit_terrain`. So the strip uncovered behind the block streams in after the block has already moved.\n\n**Problem (5), the time warp.** BeamNG's own documentation says physics drops into slow motion when FPS falls below 20, i.e. a frame longer than 50 ms. Our measured commits are 60\u201375 ms, and DAE imports run at least one per frame (up to ~22 ms each). A smooth, seconds-long slow-down suggests sustained main-thread load or CPU contention with earthd (inferred). It can be measured from GE `onUpdate(dtReal, dtSim)`.\n\n**Problem (3), dynamic tile sizes.** The quadtree already does this: 256 m tiles near, up to 131 km far. What reduces popping is when and how a switch happens: the K factor, hysteresis, fading, and swapping off-screen first. Smaller near tiles would not help by themselves.",
+  "findings": [
+   {
+    "claim": "CDLOD (Strugar 2010) hides LOD switches by geomorphing each vertex individually toward the next-coarser grid inside a 'morph area' that covers the last 15\u201330% of each LOD range. When a node is fully morphed it is identical to the coarser mesh, so the swap is invisible. It needs a vertex shader (SM3.0 heightmap fetch). For pre-tessellated meshes, the paper suggests storing per-vertex morph targets, which still needs a vertex shader.",
+    "evidence": "fstrugar/CDLOD paper (https://github.com/fstrugar/CDLOD/blob/master/cdlod_paper_latest.pdf): 'This morph area usually covers the last 15%-30% of every LOD range'; morphVertex() HLSL; 'When all vertices of a node are morphed to this low-detail state... it can be seamlessly replaced'. Repo README says it works on SM3.0+.",
+    "verified": true,
+    "relevance": "This is the gold standard for terrain LOD transitions. We can't use it because we have no access to vertex shaders. Its morph-band idea carries over to a per-object vertical 'rise' approximation (see recommendations)."
+   },
+   {
+    "claim": "Geometry clipmaps (Losasso & Hoppe 2004; Asirvatham & Hoppe, GPU Gems 2 ch. 2) keep nested world-aligned grids centred on the viewer. Updates are toroidal: only the newly exposed L- or +-shaped region is filled, and existing samples never change. Transition regions of width n/10 blend z toward the coarser level's z_c as a function of the viewer's (x, y), not of time. When the viewer moves fast, updates run coarse-to-fine and stop at a budget.",
+    "evidence": "https://hhoppe.com/geomclipmap.pdf \u00a75 ('we simply fill the newly exposed L-shaped region'; 'update levels in coarse-to-fine order, stopping upon reaching a given processing budget') and \u00a76.2 ('transition is not time-based but instead tracks the continuous viewer position', w = n/10). GPU Gems 2 ch. 2 (https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry): 'we perform all accesses toroidally'.",
+    "verified": true,
+    "relevance": "This is the direct answer to 'the tile I drive on changes'. The finest level must sit on a world-locked sample grid, so a shift only adds samples and never resamples old ones. Our 2.0039 m spacing and 256 m shifts break this."
+   },
+   {
+    "claim": "Chunked LOD (Ulrich 2002) precomputes a quadtree of meshes, each with a geometric error. Cracks are hidden with skirts (vertical curtains), and popping with per-chunk vertex morphing, which needs extra morph data and a vertex program. The parent is drawn until children are paged in.",
+    "evidence": "Secondary summaries: TU Wien thesis https://www.cg.tuwien.ac.at/research/publications/2014/ZAU14/ZAU14-thesis.pdf ('Vertices are slowly morphed'; skirts 'fall like a curtain'). http://tulrich.com/geekstuff/chunklod.html mentions 'geomorphs' and 'vertex-morphing using a Cg vertex program'. The primary sig-notes.pdf could not be text-extracted.",
+    "verified": false,
+    "relevance": "We already do the skirt part. The morph part needs shaders. Per-chunk (whole-object) morphing is the closest analogue to what we can do with a transform."
+   },
+   {
+    "claim": "Cesium 3D Tiles: REPLACE refinement draws the children instead of the parent, ADD draws both. cesium-native keeps the parent rendered ('kicks' descendants) until all children are renderable, unless more than loadingDescendantLimit (20) are still loading. When coarsening, it keeps the deeper tiles while the parent loads at 'Urgent' priority. Load priority = (1 \u2212 dot(tileDir, viewDir)) \u00d7 distance. Defaults: preloadAncestors = true, preloadSiblings = true, forbidHoles = false. Optional LOD transition: enableLodTransitionPeriod, lodTransitionLength = 1 s, kickDescendantsWhileFadingIn.",
+    "evidence": "3D Tiles spec (https://github.com/CesiumGS/3d-tiles/blob/main/specification/README.adoc): 'when refined it renders its children in place of itself' / 'renders itself and its children simultaneously'. cesium-native TilesetSelection.cpp (https://github.com/CesiumGS/cesium-native/blob/main/Cesium3DTilesSelection/src/TilesetSelection.cpp): computeTilePriority, kickDueToNonReadyDescendant, TileLoadPriorityGroup::Urgent. Tileset.cpp::_updateLodTransitions. TilesetOptions docs (https://cesium.com/learn/cesium-native/ref-doc/structCesium3DTilesSelection_1_1TilesetOptions.html).",
+    "verified": true,
+    "relevance": "Our 'no holes' rule matches Cesium's. We lack the heading-weighted priority, the urgent re-load of the parent when coarsening, and any fade."
+   },
+   {
+    "claim": "CesiumJS streaming heuristics: cullRequestsWhileMoving (default true, multiplier 60) skips requests for tiles that will likely be stale by the time they arrive. foveatedScreenSpaceError raises the SSE outside a view cone and defers edge tiles until foveatedTimeDelay = 0.2 s after the camera stops. dynamicScreenSpaceError lowers detail toward the horizon in street-level views. progressiveResolutionHeightFraction = 0.3 loads a coarse layer first. preloadWhenHidden and preloadFlightDestinations (true) load tiles at the camera's flight destination. skipLevelOfDetail / immediatelyLoadDesiredLevelOfDetail jump straight to the target LOD.",
+    "evidence": "https://cesium.com/learn/cesiumjs/ref-doc/Cesium3DTileset.html (quoted defaults: cullRequestsWhileMoving true, cullRequestsWhileMovingMultiplier 60.0, foveatedTimeDelay 0.2, progressiveResolutionHeightFraction 0.3, preloadFlightDestinations true, maximumScreenSpaceError 16).",
+    "verified": true,
+    "relevance": "Templates for: deferring off-axis or behind-camera tiles while driving, preloading at a teleport destination, and going straight to the final LOD near the player (no intermediate LODs to pop through)."
+   },
+   {
+    "claim": "Cesium for Unreal 'Use LOD Transitions' cross-fades the old and new tiles with dithered opacity masking, not translucency. Both share one noise threshold, and the incoming tile inverts it, so together they cover every pixel ('water-tight'). The default is 0.5 s, chosen 'to balance transition smoothness, apparent latency, and GPU spikes'. It looks best with TAA, because the noise changes per frame and TAA accumulates it. Cost: both LODs are drawn during the fade.",
+    "evidence": "https://cesium.com/blog/2022/10/20/smoother-lod-transitions-in-cesium-for-unreal/",
+    "verified": true,
+    "relevance": "This is the reference design for the requested fade-in. Complementary dither thresholds avoid z-fighting and double coverage."
+   },
+   {
+    "claim": "NASA-AMMOS 3DTilesRendererJS TilesFadePlugin: fadeDuration = 250 ms, maximumFadeOutTiles = 50 ('If exceeded, tiles pop instead of fading'). It uses a 4\u00d74 Bayer-dither discard (fadeIn and fadeOut thresholds) and checks whether the camera is moving fast.",
+    "evidence": "https://github.com/NASA-AMMOS/3DTilesRendererJS/blob/master/src/three/plugins/API.md (TilesFadePlugin). The source fade/wrapFadeMaterial.js has bayerDither4x4 and 'if ( dither >= fadeIn ) discard'.",
+    "verified": true,
+    "relevance": "A second independent implementation: a 250\u2013500 ms fade with a cap on simultaneous fades so a burst doesn't tank the frame."
+   },
+   {
+    "claim": "Unreal and Unity LOD cross-fades are also screen-door dither. Unreal: the 'Dithered LOD Transition' material flag, originally limited to Static mobility. Unity: LODGroup fadeMode = CrossFade, the LOD_FADE_CROSSFADE keyword and unity_LODFade, a transition width or an animated crossFadeAnimationDuration, and the shader must support it. GTA V uses 'alpha stippling' for LOD transitions on opaque meshes. Unreal also offers LOD hysteresis ('used to avoid flickering at the LOD boundary', applied only when going from complex to simple).",
+    "evidence": "Unity manual https://docs.unity3d.com/Manual/lod/lod-transitions-lod-group.html. UE forum/API (https://docs.unrealengine.com/4.27/en-US/API/Runtime/Engine/Components/UStaticMeshComponent/SupportsDitheredLODTransitions/index.html) and UE-43880 note. Courr\u00e8ges GTA V study https://www.adriancourreges.com/blog/2015/11/02/gta-v-graphics-study/ ('This technique is called alpha stippling'). UE Python API SkeletalMeshLODInfo.lod_hysteresis.",
+    "verified": true,
+    "relevance": "The industry consensus is dithered opacity over a short time window, plus hysteresis at LOD boundaries."
+   },
+   {
+    "claim": "Google Earth (patent US9105129) partitions a parent terrain tile into quadrant sub-tiles, each blended independently with its child as a function of camera distance. The order is: fade the child in over the still-opaque parent sub-tile, then fade the parent out. This 'avoids visual artifacts (e.g. transparency issues)'. Interior skirts go between sub-tiles at different LODs. A related patent (US9547921) fades textures at a variable rate so the transition time stays constant.",
+    "evidence": "https://patents.google.com/patent/US9105129 ; https://patents.google.com/patent/US9547921",
+    "verified": true,
+    "relevance": "Patents describe possible implementations, not necessarily the shipping client. Two transferable ideas: (a) 'child fully in over opaque parent, then parent out' needs only one fading object at a time; (b) quadrant granularity lets a parent be replaced partially."
+   },
+   {
+    "claim": "Microsoft Flight Simulator (Asobo, GDC terrain talk): a quadtree of Bing tiles. RecurseRequest asks for tiles in the frustum, with requested LoD driven by estimated screen size AND measured network bandwidth. It keeps tiles around the camera in memory. RecurseDraw draws the best data currently available, falling back to the parent's data. Because availability is never guaranteed, tiles are 'cut' at up to 2\u00d72 granularity with 15 precomputed index buffers (general case: a discard mask). Skirt size depends on slope. 'Anchor space' is used for precision. The rolling cache is a fixed-size disk cache of streamed data. Manual cache (MSFS 2020 only) pre-downloads chosen regions.",
+    "evidence": "Slides: https://www.asobostudio.com/files/inline-images/Designing_Terrain_System_Fuentes_Lionel.pdf ('Requested LoD depends on: Estimated tile screen size, Estimated available network bandwidth'; 'Draw tiles using the best currently available data'; 'Up to 2x2 granularity'). Cache behaviour from community guides only (https://flyawaysimulation.com/ask/answers/microsoft-flight-simulator-rolling-cache/).",
+    "verified": true,
+    "relevance": "Confirms our anchor-space design. Adds: adapt LoD to measured throughput (for us, main-thread import cost), quadrant cutting, and a persistent rolling cache plus an optional regional pre-cache. The cache mechanics are community-sourced, so only partly verified."
+   },
+   {
+    "claim": "Frostbite (Battlefield 3, NFS: The Run) streams terrain for 'arbitrary velocity (supercars and jets)'. Every frame it computes a global priority for every quadtree node: 1.0 = on target, above 1 = needs payload. Closer and larger nodes rank higher, and priority is modified by culling, by edits, and for nodes 'in motion'. A bidirectional update keeps a fixed-size pool full (release the lowest, fetch the highest). Streaming is hybrid: push-based tile bundles plus free tile-by-tile. A 'CLOD fade factor' fades in newly composited virtual-texture tiles over the previous LOD, and 'Global prioritization helps distribute punishment'.",
+    "evidence": "https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc12-terrain-in-battlefield3.pdf (slides 'Scalability', 'Global prioritization', 'Priority modified by culling, updates and speed', 'Latency under the rug').",
+    "verified": true,
+    "relevance": "A driving-game-proven model: one global priority queue with a fixed budget, and a fade on everything that streams in."
+   },
+   {
+    "claim": "Unreal World Partition: streaming sources load grid cells within a loading range. Each source has a Priority, a Rotation ('can impact streaming cell prioritization'), and an auto-computed Velocity with bUseVelocityContributionToCellsSorting. The cvar RuntimeSpatialHashCellToSourceAngleContributionToCellImportance weights cells in front of the source. bBlockOnSlowLoading makes the game wait when streaming falls behind. A streaming-source component can be placed at a teleport destination to pre-load it. HLODs replace far cells with merged simplified meshes.",
+    "evidence": "https://dev.epicgames.com/documentation/en-us/unreal-engine/world-partition-in-unreal-engine ; https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/Engine/FWorldPartitionStreamingSource ('Velocity: Source velocity (computed automatically)'; 'bUseVelocityContributionToCellsSorting'). FStreamingSourceVelocity API page.",
+    "verified": true,
+    "relevance": "Heading- and velocity-weighted priority, and pre-loading at a destination, are standard engine features. Our server currently sorts nearest-first only."
+   },
+   {
+    "claim": "Insomniac (Sunset Overdrive, Spider-Man), Playground (Forza Horizon) and Ivory Tower (The Crew) all describe streaming at speed as the core open-world constraint. No primary detail on prediction or budgets was retrievable: GDC Vault slides are members-only, and the commonly cited Spider-Man figures (128 m tiles, traversal speed tuned to streaming) could not be confirmed. Forza Horizon 2 (Fulton): 'drive in any direction at up to 270 miles an hour' made streaming the main technical challenge. Outerra uses six cube-face quadtrees with GPU refinement of 90 m data, but its morph scheme could not be confirmed.",
+    "evidence": "https://www.gdcvault.com/play/1022269/Streaming-in-Sunset-Overdrive-s (session text: 'stream entire city blocks while the player grinds through them at breakneck speed') ; https://www.gdcvault.com/play/1026496 ; https://gameinformer.com/b/features/archive/2014/10/31/afterwords-forza-horizon-2.aspx ; https://forum.outerra.com/index.php?topic=81.0",
+    "verified": false,
+    "relevance": "These sources only support the qualitative point: streaming has to stay ahead of the top speed. They give no specific numbers to adopt."
+   },
+   {
+    "claim": "BeamNG physics runs fixed 0.5 ms steps (2000 Hz). Each frame it predicts the next frame's wall-clock time and computes enough steps to reach it. The engine tries to keep FPS at or above 20, and 'If this does happen, the physics will go into a slow-motion mode.'",
+    "evidence": "https://documentation.beamng.com/beamng_tech/tools/cosimulationeditor/tight_coupling/ (fetched and quoted). GE hook signature onUpdate(dtReal, dtSim, dtRaw) at game lua/ge/main.lua:935.",
+    "verified": true,
+    "relevance": "Explains the 'time warp'. Any frame over 50 ms (terrain commit 60\u201375 ms, teleport 66 ms, rebase 75 ms per ARCHITECTURE.md v1.1 results) runs physics in slow motion. A smooth, multi-second slow-down suggests sustained overload: streaming bursts of DAE imports, or earthd competing for CPU cores with the physics threads. That part is inferred. Logging dtSim/dtReal per frame in onUpdate would confirm it."
+   },
+   {
+    "claim": "The stock BeamNG 0.39 shaders have two per-instance fade hooks. (1) processVisibility() multiplies opacity by per-instance uVisibility and, for opaque materials, calls fizzle(vPos, visibility), a screen-door dither. (2) Material stage flag instanceOpacity: 'multiplies the opacity value by the SimObject's instanceColor alpha value'. TSStatic exposes useInstanceRenderData and instanceColor, and alphaTest/alphaRef exist. setMeshAlpha (which BeamNG uses to fade vehicles in) exists only on vehicles. I found no Lua setter for a TSStatic's uVisibility.",
+    "evidence": "Game shaders: shaders/common/material/shadergen/permutations.h.hlsl:181-206 (processVisibility \u2192 fizzle), shaders/common/bng.hlsl:219 (fizzle), defaultMat.hlsl:254 ('inLayer.opacity *= (layerFlags & MATERIAL_LAYER_FLAG_instanceOpacity) ? instanceColor0.a : 1'). Game lua/ge/extensions/editor/materialEditor.lua:2605 (Instance Opacity tooltip). TSStatic fields in binary BinLinux/BeamNG.drive.x64 strings: useInstanceRenderData, instanceColor, instanceColor1/2. core/vehicleActivePooling.lua:181-187 (vehicle setMeshAlpha fade). core/groundMarkerArrows.lua:62,184 (TSStatic instanceColor set from Lua).",
+    "verified": true,
+    "relevance": "The individual features are verified; the combination is not. A dither fade without custom shaders looks feasible: an alphaTest material with instanceOpacity, plus a blue-noise or Bayer pattern baked into the tile texture's alpha, with instanceColor.a ramped from Lua. It needs an in-game probe."
+   },
+   {
+    "claim": "In our own code, every terrain-block commit changes the far-tile set right next to the block: (a) the apron mask is part of the tile key (L_i_j_a<mask>), so tiles that touched the old block or touch the new one are removed and re-added; (b) the server recomputes far tiles only inside commit_terrain(), so the 256 m strip uncovered behind the block is requested after the block has already moved. The mod's add budget is 6 ms but always at least one tile per frame, so each ~7.5\u201322 ms DAE import stretches a frame.",
+    "evidence": "server/farfield.py:80-83 (key includes _a{apron}); farfield.py:106-136 select() (single threshold d < k*s, no hysteresis); farfield.py:139 nearest_first sorts by distance only; server/earthd.py:499-511 commit_terrain \u2192 _set_block \u2192 update_far; mod/beamng_earth/lua/ge/extensions/beamngEarth/farfield.lua:4,22 (budgetMs = 6, 'at least one tile per frame').",
+    "verified": true,
+    "relevance": "This is a likely main cause of the 'nearby tiles updating' complaint and of streaming bursts after every terrain-follow. The burst of re-keyed tiles per commit (roughly 30\u201340) is my estimate, not a measurement."
+   },
+   {
+    "claim": "The terrain block's sample grid is not world-locked. squareSize = 2048/1022 \u2248 2.00391 m and the centre moves in 256 m steps, which is 127.75 samples, a non-integer shift. Every re-import therefore samples the DEM at new positions, and the per-terrain zBase/maxHeight changes the 16-bit height quantisation. Both move the ground under the car slightly.",
+    "evidence": "docs/V1_1_SPEC.md \u00a71a ('squareSize s = 2048/1022 m (\u22482.00391)', 'block centre... multiple of 256 m', 'zBase/maxHeight are per terrain'). Arithmetic: 256/2.0039139 = 127.75.",
+    "verified": true,
+    "relevance": "This is the clipmap lesson applied to us. With exact 2 m spacing, 256 m shifts (exactly 128 samples) and a fixed per-anchor height quantum, the overlapping 75% of the block would be bit-identical after re-import. The 16-bit quantisation detail of TerrainBlock is inferred."
+   }
+  ],
+  "recommendations": [
+   {
+    "what": "1. World-lock the drivable TerrainBlock so re-imports never change the ground under the player (the clipmap 'only fill new samples' rule). Use squareSize = exactly 2.0 m (valid area becomes (N\u22122)\u00b72 = 2044 m) and keep centre shifts at multiples of 256 m (= 128 whole samples). Sample the DEM at absolute grid positions (anchor-ENU multiples of 2 m), not block-relative ones. Use one zBase/maxHeight (height quantum) per anchor rather than per terrain. Let the 4 m gap to the 256 m L0 grid fall under the existing inner apron. Optionally add a debug check on the server: the overlap region of consecutive heightmaps must be identical.",
+    "why": "Addresses complaint (2) directly. Clipmaps (Losasso/Hoppe \u00a75) and every 'never change LOD under the player' design rely on fine samples being stationary in world space. Our 2.0039 m spacing with 127.75-sample shifts resamples everything on every commit.",
+    "cost": "Low. A server heightmap.py change plus a spec tweak. No engine work.",
+    "risk": "Low. The far-field tile exclusion and apron must tolerate a 2044 m block, which means 2 m overlaps at the edges. The 16-bit quantisation assumption needs checking against the measured getHeight values."
+   },
+   {
+    "what": "2. Stop the commit-triggered tile churn near the block. (a) Make far tiles independent of the block: drop the apron from the key by always building aprons/skirts on all four sides, or by sinking L0 tiles slightly so the terrain always wins. Hide (setHidden) the L0 tiles the block covers instead of deleting them, and unhide them when the block moves away. (b) Send the trailing-strip L0 tiles during prepare_terrain, before the commit. The mod spawns them hidden and unhides them in the same frame as importMaps, which is the 'preload hidden, swap atomically' pattern (Cesium preloadWhenHidden, UE streaming source at destination).",
+    "why": "Removes a burst of tile reloads about 1 km from the player on every terrain-follow, and the brief hole or pop behind the car. These are the most visible 'nearby tile updates' and a source of frame spikes.",
+    "cost": "Low to medium. Changes to the server select/key logic and the mod's hidden-pool bookkeeping. Each L0 tile kept is ~2k tris of memory.",
+    "risk": "Hidden L0 tiles under the block must never show through. Use a small downward offset or keep them hidden until uncovered. More live objects means a little more scene overhead."
+   },
+   {
+    "what": "3. Add LOD hysteresis and move transitions farther out. Refine when d < K\u00b7S, but coarsen only when d > (K+h)\u00b7S, e.g. K = 2.5\u20133, h = 0.5. Never coarsen or refine tiles in the forward 60\u00b0 cone that are being approached unless the replacement is already loaded.",
+    "why": "The current select() uses one threshold (farfield.py:128), so a tile at the boundary flips back and forth as the player wanders, and every switch happens at the closest allowed distance (largest on-screen change). Unreal's lod_hysteresis and Cesium's 'keep rendering last frame's tiles' do the same job.",
+    "cost": "Low. A few lines in select() that remember the previous selection. K = 3 instead of 2 gives about 2.25\u00d7 more tiles per level ring.",
+    "risk": "Tile count and memory grow with K\u00b2. Check the per-frame import budget."
+   },
+   {
+    "what": "4. Fade new tiles in without custom shaders. Prototype both options. Option A (dither, matches Cesium/Unreal/GTA): far tiles use a Material v1.5 stage with instanceOpacity = true, alphaTest = true and alphaRef \u2248 0.5, and the server bakes a tiled blue-noise or Bayer pattern into the tile texture's alpha. Each new TSStatic gets useInstanceRenderData = true and instanceColor.a ramped 0\u21921 over 0.3\u20130.5 s in onUpdate, then the tile switches back to an opaque material via changeMaterial. Follow Google's order: the child fades in over the still-opaque parent, then the parent is hidden. Option B (pure transform, zero material risk): spawn the child lowered by max(2 m, 0.01\u00b7S) under the parent, raise it to its true z over 0.3\u20130.5 s with setPosition so it 'grows through' the parent, then hide the parent. Coarsening does the reverse (parent loaded underneath, child sinks out). Cap simultaneous fades (3DTilesRendererJS uses 50) and pop beyond the cap.",
+    "why": "Addresses complaint (1), the requested fade-in. Industry fades are 250 ms to 1 s. The stock shader multiplies opacity by instanceColor alpha when instanceOpacity is set (defaultMat.hlsl:254), and alphaTest clipping turns that into a dither dissolve. Option B uses only per-object transforms, which the probes showed are cheap (64 setPosition calls took 0.4 ms).",
+    "cost": "Medium. A small in-game probe, a server change to bake texture alpha, and a per-frame fade list in mod/farfield.lua.",
+    "risk": "Option A is unverified in-game. It depends on whether the TSStatic's instanceColor alpha reaches the opacity of an alphaTest material and whether alphaTest is cheap enough. Without TAA it looks like a visible stipple. Option B can show skirts or a 'rising' motion up close, so use it only for tiles \u2265 ~500 m away, where 1\u20132 m of vertical motion is under a pixel or two."
+   },
+   {
+    "what": "5. Replace nearest-first ordering with a global priority queue. Use Cesium's priority = (1 \u2212 dot(dirToTile, heading)) \u00d7 distance, add a velocity term (Unreal bUseVelocityContributionToCellsSorting, Frostbite's 'node in motion'), and give 'Urgent' priority to a parent needed for coarsening. Defer tiles behind the camera or outside the view cone, and swap them first, while they are not visible (Cesium foveated and cullRequestsWhileMoving).",
+    "why": "Loads what the driver is about to see first, and moves the unavoidable pops to places nobody is looking.",
+    "cost": "Low. The server already receives vx, vy. The mod would need to send the camera heading as well.",
+    "risk": "Low. Orbit and free cameras look backwards. Use the camera direction, not only the vehicle velocity."
+   },
+   {
+    "what": "6. Budget main-thread work against the 50 ms slow-motion threshold. Remove the 'at least one tile per frame' rule when the previous frame was over ~25 ms. Never run a DAE import in the same frame as importMaps (\u224843 ms), a rebase, or reloadCollision. Spread imports so frames stay under ~33 ms. Cut per-tile cost with the planned binary .cdae writer, or coarser 16\u00d716 grids for tiles beyond ~20 km.",
+    "why": "BeamNG drops into slow motion below 20 FPS (official docs). Terrain commits are already 60\u201375 ms, and back-to-back 22 ms imports keep FPS low for seconds after each commit. This is the most likely source of the 'time warp'.",
+    "cost": "Low for the scheduling rules. Medium for .cdae.",
+    "risk": "Slower fill-in of the far field. That is acceptable if parents stay visible (no holes)."
+   },
+   {
+    "what": "7. Diagnose the time warp before fixing blindly. Have the mod log a rolling dtSim/dtReal ratio and the max frame time from onUpdate(dtReal, dtSim, dtRaw) (lua/ge/main.lua:935), tagged with commit, import and rebase events. On the server side, run earthd at lower CPU priority (nice) and cap NumPy/BLAS threads (OMP_NUM_THREADS = 1\u20132) so tile building can't starve BeamNG's physics threads.",
+    "why": "A smooth slow-down rather than a single hitch fits sustained overload or CPU contention better than one long frame. Both are inferred and need measurement.",
+    "cost": "Low.",
+    "risk": "None. It is instrumentation only."
+   },
+   {
+    "what": "8. Server-side pregeneration and caching. (a) Anchor-independent tile-local far tiles keyed by (L, i, j) in a fixed global grid, so rebases and revisits reuse files (already on the roadmap). (b) A persistent on-disk LRU 'rolling cache' of finished DAE/cdae files and terrain heightmaps (MSFS-style), plus an optional 'pre-cache region' command that builds a radius or route in the background (MSFS manual cache). (c) Speculatively build terrain and L0/L1 tiles along player + v\u00b7T, with T \u2248 server latency + commit lead (about 4\u20136 s; 200\u2013300 m at 50 m/s), and around a teleport target before committing it (Cesium preloadFlightDestinations, UE streaming source at destination). (d) Keep the DEM pyramid for the active region in memory.",
+    "why": "Makes the 'prepare' stage nearly instant, so the mod is always choosing among tiles that are already built. That is the precondition for fading, never showing holes, and never changing anything under the player.",
+    "cost": "Medium. Mostly server Python and disk space.",
+    "risk": "Cache invalidation when the mesh format changes: version the cache keys. Disk growth needs an LRU limit."
+   },
+   {
+    "what": "9. Optional: MSFS- and Google-style quadrant cutting. Emit each far tile as four quadrant sub-objects (or let the parent be hidden per quadrant), so a parent quadrant can be replaced as soon as its own child arrives instead of waiting for all four.",
+    "why": "Reduces the time a coarse parent stays visible next to fine siblings, and makes each swap a quarter as large.",
+    "cost": "Medium. Four times as many objects for parents.",
+    "risk": "More TSStatic objects and draw calls. Only worthwhile if items 4 and 5 still leave visible pops."
+   }
+  ],
+  "open_questions": [
+   "Does a TSStatic with useInstanceRenderData = true actually feed instanceColor.a into the opacity of an alphaTest material (instanceOpacity flag) in BeamNG 0.39.4? Is the alphaTest clip applied in the depth and shadow passes too? This needs an in-game probe; I did not contact the game.",
+   "Is there any Lua-reachable way to set a TSStatic's per-instance uVisibility, which would give the built-in fizzle dither with no texture tricks? No setter was found in the Lua sources or among the binary's TSStatic field strings.",
+   "Is TAA enabled in the user's graphics settings? Dither fades look much better with temporal AA.",
+   "Does TerrainBlock store heights as 16-bit values over [0, maxHeight]? That decides whether a fixed per-anchor quantum makes re-imports bit-identical.",
+   "What actually causes the 'time warp'? Candidates: frames over 50 ms (commit, rebase), sustained 20\u201330 ms import frames, LuaJIT GC, or earthd CPU contention. This needs the dtSim/dtReal log.",
+   "Primary details on Spider-Man, Forza Horizon, The Crew and Outerra streaming (prediction horizons, I/O priorities, tile sizes) were not retrievable. GDC Vault content is members-only, and the commonly quoted Spider-Man figures are unverified.",
+   "The orbit camera often looks backwards. Should priority and fades follow the camera direction rather than vehicle velocity? The mod currently sends only vehicle position and velocity."
+  ]
+ },
+ {
+  "key": "beamng-capabilities",
+  "topic": "BeamNG 0.39.4 engine capabilities for tile fade-in, hidden preloading, in-shape LOD, faster shape loading (.cdae), TerrainBlock squareSize alignment, and the \"time warp\"",
+  "summary": "Bottom line: you can fade a TSStatic in at runtime using only stock features. Each TSStatic has its own instanceColor, and its alpha multiplies the material opacity when the material has instanceOpacity set. Stock Lua uses this to fade markers, map fog and crawl-boundary flags. It only shows when the material is translucent or alpha-tested, and you call obj:updateInstanceRenderData() after each change. Because the alpha is stored per object, all tiles can share one material.\n\nThere are two ways to build the fade:\n- (A) Translucent cross-fade. Stock code does exactly this. Drawbacks: no depth write or shadows while fading, and the tile has to go back to an opaque material afterwards (the `skin` field is the likely way, but that is unverified).\n- (B) Alpha-tested dissolve. It stays in the opaque deferred path permanently and needs no material swap. The shader multiplies opacityFactor \u00d7 instanceColor.a \u00d7 opacityMap (which can read UV channel 1) and then clips against alphaRef in every pass, including depth and shadow. This needs a noise texture on a second UV set. I put it together from the shader source; it has not been tried in-game.\n\nBeamNG has no LOD cross-fade. Shape LODs (base00/start01/mesh_L<px>) switch instantly by screen size. Only vehicles get a dithered fade (setMeshAlpha).\n\nPreloading: shapes load in onAdd/registerObject, so a TSStatic created hidden pays the full import right then. Stock arrowGPS does exactly this (creates hidden, shows later). It moves the cost to a time you choose but does not shrink it. Nothing async is exposed to Lua.\n\nThe biggest speed win is that the engine already turns every DAE into a binary .cdae cache. It writes them to <user>/temp/temp/beamngearth/<session>/ \u2014 I found 500\u2013900 files, ~84 MB, never reused because the tile names are unique. That is why the probes 'saw none' next to the .dae. I decoded an engine-written v31 .cdae: an 8-byte header, a msgpack header map, then an uncompressed sequence of msgpack ints, floats and bin blobs. The layout matches BeamNG's published format, so the server can write .cdae directly and skip XML parsing and the engine's own cache write. TSStatic accepts .cdae as shapeName (getSupportedShapeExtensions lists '.dae;.dts;.cdae').\n\nTerrain: importMaps maps heightmap pixels 1:1 to samples, with squareSize = metersPerPixel. The resampling is on our side: server/heightmap.py places samples at cx-1024+i\u00b72.0039. A 256 m move is 127.75 samples, so every re-import samples the DEM at different points and the ground you are driving on changes shape. Fix: squareSize = 128/63 m (256 m = 126 samples, an even shift; valid area 2076 m \u2265 2048), with x0 = cx-1024. Also use one fixed height quantisation step.\n\nTime warp: the perf log shows minSimRatio 0.78\u20130.85 in exactly the windows that contain 60\u201378 ms frames, while the engine's own dtReal is smoothed. Most likely the engine clamps/smooths dt, so sim time loses the wall time of long frames (inferred, not verified).",
+  "findings": [
+   {
+    "claim": "TSStatic exposes per-object render data: fields useInstanceRenderData, instanceColor, instanceColor1, instanceColor2, plus dynamic ('Disable render optimizations for static objects') and forceDetail. A skin docstring sits in the TSStatic block, but the bare field name is not a separate string, so it may be suffix-merged.",
+    "evidence": "strings BeamNG.drive.x64 (scratch dump line ~165276-165286): 'useInstanceRenderData','instanceColor','@brief The color 1 to use','instanceColor1',... and the TSStatic docstrings '@brief The skin applied to the shape.' and 'Disable render optimizations for static objects'. Stock use of dynamic: lua/ge/extensions/core/trafficSignals.lua:240, freeroam/bigMapMode.lua:158, ui/arrowGPS.lua:81",
+    "verified": true,
+    "relevance": "These are the per-tile knobs for a fade without one material per tile."
+   },
+   {
+    "claim": "Material has a per-layer flag instanceOpacity: 'Use SimObject owner's opacity value multiplied against the material opacity' (the editor tooltip says 'multiplies the opacity value by the SimObject's instanceColor alpha'). There are also instanceDiffuse and instanceEmissive. Other Material fields: translucent, translucentBlendOp, translucentZWrite, translucentRecvShadows, alphaTest, alphaRef, opacityMap, opacityMapUseUV, castShadows.",
+    "evidence": "binary strings near 'instanceDiffuse/instanceEmissive/instanceOpacity' (~156528) with docstrings; lua/ge/extensions/editor/materialEditor.lua:1284-1286, 2605; stock material art/shapes/interface/sideMarker/main.materials.json (in content/art_shapes.zip) uses instanceDiffuse+instanceEmissive+instanceOpacity+opacityFactor",
+    "verified": true,
+    "relevance": "Gives per-object alpha from one shared material."
+   },
+   {
+    "claim": "Shader confirms the per-instance alpha path. In defaultMat.hlsl, instanceColor0 is fetched per instance; inLayer.opacity *= instanceColor0.a when MATERIAL_LAYER_FLAG_instanceOpacity is set, then *= opacityMap sample (UV0 or UV1 via MATERIAL_LAYER_FLAG_opacityMapUV1). processVisibility() runs clip(material.opacity - alphaTestValue) under MFT_AlphaTest. It is called from every pass (gbuffer, forward, depth and shadow variants).",
+    "evidence": "shaders/common/material/shadergen/defaultMat.hlsl:249-254, 275-288, 563; permutations.h.hlsl:181-207 and the calls at 220/254/287/373/407/458/479/499/516",
+    "verified": true,
+    "relevance": "Proves both the translucent fade and an alpha-tested 'dissolve' fade are shader-supported for TSStatic."
+   },
+   {
+    "claim": "Stock Lua fades TSStatics by animating instanceColor alpha. crawl/boundary.lua runs a smootherstep alpha over fadeInDuration with setField('instanceColor',0,'1 1 1 a'). bigMapMode fades fog shapes (material translucent + instanceDiffuse). missionMarker and groundMarkerArrows set the alpha, then call obj:updateInstanceRenderData().",
+    "evidence": "lua/ge/extensions/gameplay/crawl/boundary.lua:112-135; freeroam/bigMapMode.lua:150-168, 614-619; gameplay/markers/missionMarker.lua:169-172, 260-268; core/groundMarkerArrows.lua:62, 284; flowgraph/nodes/scene/hide.lua:37-38; content/art_shapes.zip art/shapes/interface/bigmap/main.materials.json (translucent:true, instanceDiffuse:true)",
+    "verified": true,
+    "relevance": "A ready-made, in-production recipe for fading tiles in and out."
+   },
+   {
+    "claim": "An opaque (non-translucent, non-alpha-tested) material ignores instance alpha. The engine's dithered 'fizzle' fade for opaque geometry is driven by vertex, instance or prim visibility (uVisibility), and I found no Lua setter for it on TSStatic. Vehicles have setMeshAlpha (BeamNGVehicle API, MFT_FlexMeshVisibility); TSStatic does not.",
+    "evidence": "permutations.h.hlsl:186-206 (fizzle only from visibility, skipped for translucent); bng.hlsl:219-234 fizzle(); setMeshAlpha appears only in the vehicle method list (binary ~151451) and is used only on vehicles (core/vehicleActivePooling.lua:186, core/vehicle/partmgmt.lua:1176)",
+    "verified": true,
+    "relevance": "The tile material must be translucent or alpha-tested for a fade. There is no free per-object dither for opaque TSStatics."
+   },
+   {
+    "claim": "No LOD cross-fade exists for shapes. Collada LOD comes from the TSShapeConstructor lodType (DetectDTS/SingleSize/TrailingNumber). Stock assets use base00 > start01 > mesh_L800/_L400/_L200 (trailing number = screen-pixel size) plus Colmesh_*-1 for collision. Switching is by projected pixel size, scaled by $pref::TS::detailAdjust. forceDetail pins one level. No 'lodFade/crossfade/dither LOD' strings exist; only 'shadowNullDetailSize'.",
+    "evidence": "binary strings 'DetectDTS','SingleSize','TrailingNumber' and the lodType docstring (~145285-145290); ReflectorDesc docstring '( modulates $pref::TS::detailAdjust )'; west_coast_usa.zip levels/west_coast_usa/art/shapes/buildings/s_bld_tall_apt_010.dae nodes base00,start01,*_L800,*_L400,*_L200,Colmesh_*-1; docs.beamng.com level_creation section5 ('_L number ... screen pixels that determines the next LOD switch')",
+    "verified": true,
+    "relevance": "In-shape LOD would pop just like tile swaps and makes import slower (all LODs are parsed). The quadtree is already the better LOD mechanism."
+   },
+   {
+    "claim": "The shape is loaded synchronously in TSStatic::onAdd (registerObject). A hidden TSStatic therefore pays the full import at creation, then shows instantly with hidden=false. Stock arrowGPS does create-hidden-then-show. No async shape loading is exposed to Lua: the binary has 'createAsync' and 'use ResourceManager2' option strings next to Resource2<TSShape>::create, but nothing in the shipped Lua uses them.",
+    "evidence": "binary 'TSStatic::onAdd() - Shape creation failed!', '_createShape', 'createAsync', 'use ResourceManager2', 'Resource2<TSShape>::create' (~144898-144933); lua/ge/extensions/ui/arrowGPS.lua:74-87 (registerObject then hidden=true); grep of lua/ for createAsync/ResourceManager2 finds nothing",
+    "verified": true,
+    "relevance": "Preloading only moves the cost to frames we choose (idle frames, ahead along the velocity vector). It does not cut it. Reusing a loaded shape path, or a moved TSStatic, costs almost nothing."
+   },
+   {
+    "claim": "The engine writes a binary .cdae for every imported DAE, but not next to it. The path is <user>/temp/ + lowercased source path: /temp/beamngEarth/x.dae becomes temp/temp/beamngearth/x.cdae. There are hundreds of far_*.cdae files there now (about 500-900, ~84 MB), never reused because tile names are unique, and never cleaned up. Stock zips ship a .cdae beside every .dae (706/706 in art_shapes.zip). Stock tooling looks for a cache beside the .dae, else at '/temp/'+path.",
+    "evidence": "find ~/.local/share/BeamNG/BeamNG.drive/current/temp/temp/beamngearth (probe_tile_v1.cdae, lodtest_*.cdae, 20261010-001906-7aa0/far_*.cdae); lua/ge/extensions/editor/resourceChecker/resourceUtil.lua:847-852; binary 'Unable to write cached COLLADA shape: {}', 'Unable to stat cached path: {}', '-cdaeCompressLevel'",
+    "verified": true,
+    "relevance": "Each tile import currently includes XML parsing plus a cache write on the main thread. The cache folder also grows without bound."
+   },
+   {
+    "claim": "The .cdae v31 format is simple and writable from the server. Layout: u32 version word (0x007C001F = v31, exporter 124), u32 headerSize, a msgpack map {info, compression:false, bodysize, objectNames}, then an uncompressed sequence of msgpack values. Those values are shape info (smallestVisibleSize, smallestVisibleDL, radius, tubeRadius, center, bounds); 19 vectors as (count, elemSize, bin), e.g. details elemSize 52; names; meshes with verts(12B), tverts(8B), tverts2, colors, norms(12B), encodedNorms, primitives(12B: start, numElements, matIndex|flags), indices(u32), tangents(16B), vertsPerFrame, meshFlags; sequences; and materials (name, flags, maps). A 16x16-cell engine-written tile decodes cleanly with a 60-line reader.",
+    "evidence": "decoded ~/.local/share/BeamNG/BeamNG.drive/current/temp/temp/beamngearth/lodtest_16_0.cdae with /tmp/claude-1000/-home-tecnagamer-Documents-BeamNG-Earth/b02246e0-198a-4d55-8cba-7ac6107ad43e/scratchpad/engine/scripts/mp.py (289 verts, 1536 indices, material 'bngEarthDae', detail 'detail2'); https://documentation.beamng.com/modding/file_formats/cdae/ and its reference reader cdae_dump_info.py (downloaded to scratchpad/engine/dl/)",
+    "verified": true,
+    "relevance": "Writing .cdae on the server removes the per-tile XML parse and the engine's own cache write. The engine-written lodtest_*.dae/.cdae pairs on disk can serve as a byte-level golden test."
+   },
+   {
+    "claim": "TSStatic accepts .cdae (and .dts) as shapeName directly. Lua also exposes compileCollada(src,dst,dstData,validate), getSupportedShapeExtensions(), assimpParsingBenchmark and setAsyncShaderCompilation.",
+    "evidence": "binary strings '.dae;.dts;.cdae', ' -assimp', 'compileCollada', 'getSupportedShapeExtensions', 'assimpParsingBenchmark', 'setAsyncShaderCompilation' (~152797-153015); lua/ge/extensions/editor/api/valueInspector.lua:867 ('match what the engine can actually load: .dae/.dts/.cdae'); lua/ge/extensions/util/worker.lua:30-44 and util/compileMeshes.lua (compileCollada usage)",
+    "verified": true,
+    "relevance": "shapeName='x.cdae' is the expected path. compileCollada in-game can produce reference files for testing the server writer."
+   },
+   {
+    "claim": "How much faster a .cdae loads than a .dae for a 2048-tri tile is not measured. It should be much faster (fixed-layout memcpy-style bins versus COLLADA DOM parse, TSShape build and cache write), but this is inferred. The game log shows far-tile imports about 10-26 ms apart, and perf-session p95 is ~22-28 ms while tiles stream.",
+    "evidence": "~/.local/share/BeamNG/BeamNG.drive/current/beamng.log lines ~1633-1660 ('Importing COLLADA: far_1_*.dae' timestamps); docs/research/perf-session-2026-10-10.jsonl (p95 22-25 ms windows)",
+    "verified": false,
+    "relevance": "Measure before and after with the existing perfmon. If it holds, the 6 ms budget would actually be met."
+   },
+   {
+    "claim": "glTF/GLB needs the -assimp launch flag. No evidence of async loading via assimp; it is just a different parser on the same main-thread path.",
+    "evidence": "binary 'glTF shapes require the -assimp flag: {}', 'Failed to load Collada shape (assimp): {}', libassimp.so.6 in BinLinux",
+    "verified": true,
+    "relevance": "Not worth it: it needs a launch flag from the user and is still synchronous. Direct .cdae is better."
+   },
+   {
+    "claim": "importMaps(heightMap, metersPerPixel, heightScale, holesMap, materials, opacityLayers, flipY) maps PNG pixels 1:1 to samples with squareSize = metersPerPixel; the engine does no resampling. Our server resamples: server/heightmap.py:27-35 puts samples at cx-1024+i*2048/1022. A 256 m block move is 127.75 samples, so every re-import samples the DEM at different points, and the ground under the car changes. Per-block zBase/maxHeight quantisation (heightmap.py:56-59) adds a few mm of extra jitter.",
+    "evidence": "binary docstring '( BString terrainName, BString heightMap, f32 metersPerPixel, f32 heightScale, BString materials, BString opacityLayers[, bool flipYAxis=true, BString holesMap] )' and TerrainBlock example 'squareSize = \"2\"' (~165455, 165631); lua/ge/extensions/util/terrainGenerator.lua:463; TerrainBlock methods setHeightScale/getHeightScale/getSquareSize; server/heightmap.py:19-35, 53-61",
+    "verified": true,
+    "relevance": "This is the root cause of complaint (2). Fix the lattice so it lines up across moves."
+   },
+   {
+    "claim": "If TerrainBlock alternates the triangle diagonal by sample parity (classic Torque), an odd sample shift (127) would also flip every diagonal. Choosing a squareSize where 256 m is an even sample count avoids that whatever the rule is.",
+    "evidence": "Torque terrain convention (not verified in the BeamNG binary)",
+    "verified": false,
+    "relevance": "Argues for squareSize = 128/63 (126 samples per 256 m) rather than 256/127."
+   },
+   {
+    "claim": "Using new material permutations (translucent, or alpha-tested with an opacity map) triggers a shader compile on first render. The Lua global setAsyncShaderCompilation exists.",
+    "evidence": "binary string 'setAsyncShaderCompilation' among Lua globals (~152790)",
+    "verified": true,
+    "relevance": "Pre-warm the fade material once at level start, or the first fade will hitch."
+   },
+   {
+    "claim": "Time warp: the mod's perfmon notes that the engine's dtReal is smoothed or capped (a 60 ms terrain commit showed as a ~22 ms frame). The perf session records minSimRatio 0.78-0.85 exactly in windows with 60-78 ms max frames (terrain commits, followMs ~63 ms), while the window simRatio of engine dtSim/dtReal stays ~1.0. Most likely the engine limits the per-frame dt, so a long frame's wall time is lost or spread over several frames, which looks like a smooth slowdown.",
+    "evidence": "mod/beamng_earth/lua/ge/extensions/beamngEarth/perfmon.lua:14-19 comment; docs/research/perf-session-2026-10-10.jsonl rows t=1791607074 (maxMs 72.5, minSimRatio 0.786), t=1791607088 (maxMs 78.2, minSimRatio 0.776), t=1791607103 (maxMs 74.9, minSimRatio 0.822); be:getSimulationTimeScale / getSimulationTimeScaleAchieved / be:getPhysicsSpeedFactor exist (binary ~151317-151473, lua/ge/extensions/mcp/tools/sim.lua:12-13)",
+    "verified": false,
+    "relevance": "Explains complaint (5). The fix is to remove the >33 ms frames (terrain commit ~43-60 ms, tile imports 10-26 ms), not to change the sim."
+   }
+  ],
+  "recommendations": [
+   {
+    "what": "Fade recipe A: translucent cross-fade, as used by stock bigMapMode, crawl/boundary and missionMarker. Create one shared fade material at session start, before any tile loads, mapped to the name the tile DAEs use for fading:\n```lua\nlocal m = createObject('Material')\nm:setField('mapTo', 0, 'fade_far_'..sid)\nm:setField('version', 0, '1.5')\nm:setField('baseColorMap', 0, palettePath)\nm:setField('instanceOpacity', 0, '1') -- layer 0\nm.translucent = true\nm:setField('translucentZWrite', 0, '1')\nm.castShadows = false\nm.canSave = false\nm:registerObject('bngEarthFarFade_'..sid)\n```\nPer tile:\n```lua\no.useInstanceRenderData = true\no.dynamic = true\no:setField('instanceColor', 0, '1 1 1 0')\n-- registerObject; each frame for ~0.4 s:\no:setField('instanceColor', 0, string.format('1 1 1 %.3f', smootherstep(t)))\no:updateInstanceRenderData()\n```\nKeep the parent tile opaque underneath until the child reaches alpha 1, then delete the parent. That gives a parent-to-child blend with no hole. At the end, switch the child to an opaque material, e.g. DAE material target 'base_far_<sid>' plus a 'fade_far_<sid>' Material, with o:setField('skin',0,'fade') at spawn and 'base' after. Test that the skin field changes at runtime (o:getField('skin',0)).",
+    "why": "Every piece is used in shipping Lua. instanceColor is per object, so one shared material serves all tiles. This fixes complaint (1).",
+    "cost": "About 1 day in mod/beamng_earth/lua/ge/extensions/beamngEarth/farfield.lua plus the material name in server/dae.py. One setField + updateInstanceRenderData per fading tile per frame.",
+    "risk": "Translucent tiles do not write to the G-buffer: no shadows received, forward lighting, possible sorting issues against other translucent objects. Where child and parent surfaces nearly coincide, depth-test z-fighting can make the blend look patchy. Runtime skin switching is unverified. If it fails, the fallback is respawning, but both TSStatics share the shape and therefore its materials, so recipe B is the cleaner fallback."
+   },
+   {
+    "what": "Fade recipe B, preferred if it works: an alpha-tested dissolve that stays opaque. Use one permanent material for every far tile:\n```lua\nversion = 1.5\nbaseColorMap = palette\nopacityMap = noise.dds -- 64-128 px white noise in [0.5,1], one mip level\nopacityMapUseUV = 1 -- noise on UV channel 1 / tverts2\ninstanceOpacity = true\nalphaTest = true\nalphaRef = 128\n```\nThe DAE or .cdae needs a second UV set with a high-frequency coordinate, e.g. (x/2 m, y/2 m). A pixel survives when noise\u00b7a \u2265 0.5. To show fraction f, set a = 0.5 / (1 - 0.5\u00b7f), which goes from 0.5 to 1. Below 0.5 nothing shows. Animate f from 0 to 1 over 0.3-0.5 s, then leave a = 1 forever.",
+    "why": "From the shader source: opacity = factor \u00d7 instance alpha \u00d7 opacityMap(UV1), then clip() in every pass (defaultMat.hlsl:254-288, permutations.h.hlsl:181-207). Depth, shadows and the deferred path stay correct, there is no translucency sorting, and the material never has to be swapped.",
+    "cost": "Server writes a second UV set (+8 B/vertex) and ships one noise texture. The mod creates one material and animates one field per fading tile. About 1 day including an in-game test.",
+    "risk": "Not tested in-game. If the engine generates mips for the noise map, distant tiles will dissolve all at once around a \u2248 0.67. Use a one-mip DDS, or accept it because distant pops matter less. Alpha test turns off some early-Z optimisations, a small GPU cost. Pre-warm the shader once at level start (one tile at a = 0.4, which renders nothing but compiles the permutation)."
+   },
+   {
+    "what": "Write .cdae on the server and point shapeName at it (e.g. '/temp/beamngEarth/<sid>/far_L_i_j.cdae'). Base the writer on the reference reader cdae_dump_info.py and the decoder at scratchpad/engine/scripts/mp.py. Golden test: the engine-written ~/.local/share/BeamNG/BeamNG.drive/current/temp/temp/beamngearth/lodtest_16_0.cdae next to temp/beamngEarth/lodtest_16_0.dae. Include tangents (16 B/vertex) and the material name. Create the Material in Lua by mapTo, because a .cdae has no COLLADA effect to auto-generate one from. If shapeName=.cdae is refused, write x.cdae beside a stub x.dae with a newer mtime.",
+    "why": "Today every tile pays a COLLADA XML/DOM parse plus a cache write on the main thread (10-26 ms between imports in beamng.log), and the cache is never reused. A binary load should fit inside the 6 ms budget and remove the 22-28 ms p95 frames while streaming.",
+    "cost": "About 1-2 days for a numpy writer (fixed layout, uncompressed) plus the golden-file test.",
+    "risk": "Undocumented details (meshFlags, primitive matIndex flag bits, encodedNorms) can differ between engine versions. Copy them from the engine-written file. The format version may change in a future game update. Keep the DAE path as a fallback and check the version word."
+   },
+   {
+    "what": "Clean up the engine's cdae cache: delete <user>/temp/temp/beamngearth/<old sessions>/ at mod start, and delete per-tile .cdae files whenever the server deletes the matching .dae, until we write .cdae ourselves.",
+    "why": "There are already hundreds of orphaned far_*.cdae files (~84 MB) after one session, and the folder grows without bound.",
+    "cost": "An hour. FS:removeFile / FS:directoryRemove in the mod, or os.remove on the server.",
+    "risk": "Low."
+   },
+   {
+    "what": "Fix the terrain lattice. In server/heightmap.py set SQUARE = 128/63 (\u22482.031746 m), x0 = cx-1024, y0 = cy-1024, samples at x0 + i\u00b7SQUARE (i = 0..1023). The valid area is [cx-1024, cx+1052.4], which covers the 2048 m block, and a 256 m move is exactly 126 samples (even). In the mod, terrain.lua SQUARE_SIZE = 128/63 and the block position stays (cx-1024, cy-1024, zBase). Use one quantisation per anchor: fixed maxHeight (e.g. 2048 m \u2192 3.1 cm step, or 1024 m \u2192 1.6 cm) and zBase = floor(min/step)\u00b7step. A world point then always maps to the same sample with the same stored value. Keep far-field exclusion on the [cx-1024, cx+1024] L0 tiles; the extra 28 m of block lies under the next tile's apron.",
+    "why": "importMaps does not resample, so the changing ground under the car comes from our own sampling (2.0039 m spacing, 127.75-sample shifts) plus per-block quantisation. This fixes complaint (2) without changing the commit cost.",
+    "cost": "About 2 hours plus tests (server/tests/test_heightmap.py, mod/tests/test_follow.lua).",
+    "risk": "The extra 28 m of block on the N/E edges overlaps far tiles by one apron. Check that there is no z-fight, or make the apron drop cover it. Physics edge: valid ground is [x0, x0+(N-2)s], which is unchanged."
+   },
+   {
+    "what": "Hidden pre-spawn: when the server predicts tiles (snap along velocity), spawn them hidden in idle frames (o.hidden = true before registerObject, as in arrowGPS) and unhide or start the fade when the server selects them. Also make far tiles anchor-independent so a rebase only calls setPosRot (0.4 ms per 64 tiles) instead of re-importing.",
+    "why": "The import cost is unavoidable (synchronous onAdd) but can be moved to frames with spare budget. Shapes already loaded cost nothing to move.",
+    "cost": "About 1 day for the protocol (e.g. far_prefetch) and the farfield queue.",
+    "risk": "Memory for unused prefetched tiles. Delete them after a timeout."
+   },
+   {
+    "what": "Measure the time warp properly. In perfmon.onUpdate, accumulate wall-clock time (hptimer) against dtSim and log both, plus be:getPhysicsSpeedFactor() and getSimulationTimeScaleAchieved if it is callable. Then remove frames over 33 ms: the terrain commit (~43-63 ms) and multi-tile frames.",
+    "why": "The existing simRatio compares two engine-smoothed numbers. minSimRatio 0.78 shows up exactly in windows with 60-78 ms frames, so wall time is probably being dropped.",
+    "cost": "30 minutes for the instrumentation.",
+    "risk": "None. It is diagnostic."
+   },
+   {
+    "what": "Do not use in-shape LODs (base00/start01/_L<px>) for far tiles.",
+    "why": "They switch instantly with no blend, every LOD is parsed at import (slower loads), and the server quadtree already does distance LOD. Dynamic tile sizes, small near and large far, are exactly what the quadtree already is.",
+    "cost": "None.",
+    "risk": "None."
+   }
+  ],
+  "open_questions": [
+   "Can the TSStatic 'skin' field be changed at runtime, to swap a tile from the fade material to the opaque one? Its docstring is in the TSStatic block, but the bare field name is not a separate string in the binary. Test in game: o:setField('skin',0,'fade') and then o:getField('skin',0).",
+   "Does shapeName='x.cdae' load with no .dae beside it, or does the engine require the source and check mtimes ('Unable to stat cached path')?",
+   "How fast does a 2048-tri .cdae load compared with the .dae (~7.5-22 ms)? Use the existing perfmon; the Lua global assimpParsingBenchmark may also help.",
+   "Does the material system generate mips for an opacityMap given as PNG? This decides whether recipe B needs a one-mip DDS.",
+   "Does the TerrainBlock triangulation depend on sample parity (Torque split rule)? It is moot if squareSize 128/63 (even shift) is adopted.",
+   "Does dynamic=true on far-tile TSStatics change spawn, move or render cost? Stock code sets it on objects whose instance data changes often."
+  ]
+ },
+ {
+  "key": "time-warp",
+  "topic": "BeamNG.drive 0.39.4 sim-time advancement per frame and the cause of the smooth \"time warp\" in BeamNG.Earth",
+  "summary": "The time warp comes from the engine, and our own streaming work sets it off. BeamNG does not advance physics by wall-clock frame time. Each frame the engine filters the raw frame time: it clamps it to 1 s, takes a median of the last 3 frames, then applies a slow exponential moving average (EMA) with a gain of 2.5% or 7.5% per frame depending on direction. That smoothed value is Lua's `dtReal`. Physics then simulates `dtReal \u00d7 timescale` in 0.5 ms steps (2000 Hz), carrying the remainder over. Steps are capped at 100 per frame (50 ms), and time beyond the cap is dropped.\n\nThe consequences:\n- **Isolated spike:** a single long frame is removed by the median. Its time is never simulated, so it shows as a plain hitch.\n- **Run of slow frames:** two or more slow frames in a row get through the median. The EMA then ramps up slowly, so the sim runs at about 35\u201380% of real time for roughly 0.3\u20130.4 s. As it decays it overshoots to about 130\u2013165% for another 0.4 s or so. That is the \"smooth lag spike\".\n\nOur pipeline produces exactly this pattern. `beamng.log` shows each ~60 ms terrain commit followed in the very next frame by 15 or more back-to-back COLLADA imports, about one every 25 ms.\n\nOur perfmon cannot see the warp. It compares `dtSim` to `dtReal`, and both come from the smoothed clock. The fix is either:\n- keep per-frame work small and ramp it in and out gradually, or\n- keep heavy frames isolated, with at least 2 light frames between them,\n\nand also remove the 60 ms commit, or at least isolate it.",
+  "findings": [
+   {
+    "claim": "simTimeAuthority.lua is not the cause: it only handles user-set slow motion and pause.",
+    "evidence": "~/.local/share/Steam/steamapps/common/BeamNG.drive/lua/ge/simTimeAuthority.lua. bulletTimeSlots, setTargetSpeed clamps to [0.001, 1], and the timescale changes only through set/selectPreset/pause/pauseSmooth via be:setSimulationTimeScale. Nothing in it reacts to frame time.",
+    "verified": true,
+    "relevance": "Rules out a Lua-side timescale change; the mechanism is in C++."
+   },
+   {
+    "claim": "The engine smooths the frame dt. Raw dt is clamped to 1.0 s, then filtered: median of the last 3 raw dts, then an EMA. The gain is 0.075 when a leaky error integral agrees with the direction of change and 0.025 otherwise.",
+    "evidence": "Disassembly of BinLinux/BeamNG.drive.x64, function 0x119bdb0, called once per main-loop iteration at 0x11a1928.\n- fmin(1.0 @0x3485a90, raw); raw is stored to 0x4faf540.\n- acc(0x4faf538) = 0.999(@0x34c1ac8)*acc + clamp(prevSmoothed - raw, -0.1(@0x34986a0), 0.1(@0x3488638)).\n- 3-sample history at 0x4d5c838/840/848; median via fmax/fmin.\n- delta = median - prev; gain = (acc*delta < 0) ? 0.075(@0x3556928) : 0.025(@0x3556930).\n- smoothed(0x4faf530) = prev + gain*delta.\n- If byte [singleton@0x4d88a68 + 0x204] is set, smoothed = raw (bypass).",
+    "verified": true,
+    "relevance": "This is the core mechanism. Sim time follows a lagged, filtered clock, not the wall clock."
+   },
+   {
+    "claim": "Physics is driven by the SMOOTHED dt. Lua's dtReal is the smoothed dt, and dtRaw (the 3rd argument) is the clamped raw dt.",
+    "evidence": "0x11a171a loads xmm0 from 0x4faf530 (smoothed) and then calls the physics-update function 0x7d1c60 at 0x11a1722. At 0x11a1646..0x11a1656 and at 0x11a18c8..0x11a18e0 the main loop passes (xmm0 = 0x4faf530 smoothed, xmm1 = 0x4da9730 dtSim, xmm2 = 0x4faf540 raw). This matches lua/ge/main.lua:820 `luaPreRender(dtReal, dtSim, dtRaw)` and :920 `update(dtReal, dtSim, dtRaw)`. The argument mapping to the Lua callbacks is inferred from argument order. The use of 0x4faf530 for physics is verified.",
+    "verified": true,
+    "relevance": "Explains the observation in perfmon.lua that a 60 ms commit 'showed up as ~22 ms' in dtReal. Lua budgets based on dtReal are wrong during stalls."
+   },
+   {
+    "claim": "In normal mode the requested sim time per frame is smoothed dt \u00d7 timescale, with one engine update per frame.",
+    "evidence": "Function 0x7cc5c0 (called from 0x7d1db2):\n- If the paused flag is set or timescale (0x4da9720, the global the main loop exposes as g_TimeScaleIdeal at 0x11a17cd) == 0, it returns 0.\n- If [this+0x140] > 0 (fixed mode), it uses a fixed dt of 0.05 and a step count of [this+0x140].\n- If [this+0x140] < 0 (deterministic mode, matching be:setPhysicsSpeedFactor(-1) in techCore.lua:835-845), dt = 1/[cfg+0x124].\n- Otherwise dtReal = dt, dtSim = timescale*dt, count = 1.",
+    "verified": true,
+    "relevance": "There is no wall-clock catch-up loop. Whatever the smoothed dt says is what physics simulates."
+   },
+   {
+    "claim": "libbeamng quantizes requested sim time into 1/2000 s steps with a carried remainder. Steps are capped at round(fps \u00d7 0.05) = 100 per update (50 ms). Time above the cap is dropped, not carried.",
+    "evidence": "BinLinux/libbeamng.x64.so: getBeamEngine -> vtable 0x19ff58, slot 1 = 0x2bfb0 -> 0x2ba80.\n- acc = dtSim + carry[this+0x2c0]; steps = int(max(0, acc*fps(@0x1a3d14 = 2000) + 0.5)).\n- carry = acc - steps*dt(@0x1a3d18 = 0.0005), computed from the UNCAPPED step count; then steps = min(steps, maxSteps @0x1a3d10 = 100).\n- Init 0x27a40 sets dt = 1/fps and maxSteps = round(fps*0.05).\n- This is consistent with lua/console/bananabench.lua:13 'max physics steps do *NOT* increase beyond 100'.",
+    "verified": true,
+    "relevance": "This is the precise hard threshold. It only applies once the SMOOTHED dt exceeds 50 ms (sustained below about 20 fps). It is not what we are hitting."
+   },
+   {
+    "claim": "Lua's dtSim is the time actually simulated by the previous engine update (one-frame lag), and the engine tracks an 'achieved' timescale.",
+    "evidence": "At 0x7d1e37/0x7d1e5d, 0x4da9730 = [rbx+0x148] (the previous result) is written before the update loop. The loop at 0x7d1ec0 calls engine->vtbl[1](dtReal, dtSim) and sums the result into [rbx+0x148] at 0x7d1f0e. At 0x7d1f94, 0x4da9728 = timescale*actual/requested. The string getSimulationTimeScaleAchieved exists in the exe.",
+    "verified": true,
+    "relevance": "Per-frame dtSim/dtReal in perfmon reflects only lag between consecutive smoothed values plus the 0.5 ms quantization (about 5% at 10 ms frames), not wall-clock warp."
+   },
+   {
+    "claim": "Running the decoded algorithm on our workloads reproduces a smooth slowdown followed by a fast-forward.",
+    "evidence": "Re-implementation in scratchpad/timewarp/sim/dtsim.py and profile.py, baseline 11.5 ms.\n- Single 60 ms commit: dropped by the median, a one-off 48 ms hitch, no warp.\n- 60 ms commit + 15 \u00d7 25 ms imports: sim speed per 100 ms = 34, 62, 72, 80, 153, 165, 151, 130, 115, 108%; max lag 163 ms.\n- 15 \u00d7 25 ms frames: 52, 66, 76, 121, 169, 153, 128%.\n- +6 ms per frame sustained: dips to 71% and recovers in about 0.8 s.\n- +2.5 ms per frame: minimum 82%, lag 32 ms.\n- 22 ms import every 2nd frame (H,L,H,L): passes the median, so it warps (52%).\n- Every 3rd frame (H,L,L): the median rejects each spike, so there are micro-hitches and no warp.",
+    "verified": false,
+    "relevance": "This is a model built from the decoded constants, not an in-game measurement. It matches the user's 'slows down like a lag spike but smoother'. It also predicts a speed-up phase afterwards, which the user may not have noticed."
+   },
+   {
+    "claim": "Our streaming produces exactly the trigger pattern: a terrain commit immediately followed by a run of about 25 ms COLLADA-import frames.",
+    "evidence": "~/.local/share/BeamNG/BeamNG.drive/current/beamng.log:\n- '9182.02513 terrain block now at (-768, -2048), 60.6 ms', then imports at 9182.04765, .07381, .10055 and onward, about 25 ms apart.\n- Same at 9270.27099 (62.8 ms), followed by 15+ imports at about 25 ms spacing through 9270.64455.\n- Collision reloads in the current session are only 2\u20137 ms (the 165\u2013185 ms reloads were early probe sessions).\n- No 'MainLoop frame time ... exceeds stall threshold' lines in any beamng*.log.",
+    "verified": true,
+    "relevance": "The 60 ms commit by itself would be filtered out as a hitch. Back-to-back imports right after it turn it into a run, which passes the median and drives the EMA warp."
+   },
+   {
+    "claim": "The perf samples are consistent with the model, and perfmon's simRatio is structurally unable to detect the warp.",
+    "evidence": "docs/research/perf-session-2026-10-10.jsonl, 68 records with simRatio:\n- Window simRatio is 0.991\u20131.008, as expected because dtSim is just lagged smoothed dtReal.\n- Windows containing 72\u201380 ms frames (t\u22480, 14.5, 28.9, 41.2, 84.6, 134, 142 s, about every 13\u201315 s, matching terrain-follow commits) show minSimRatio 0.78\u20130.82 with 10\u201317 'slow' frames. That fits the smoothed dt ramping up at 7.5% per frame.\n- Calm windows show a minimum of about 0.95\u20130.96 (0.5 ms quantization).\n- Windows at t=115\u2013124 s show exactly 1.000 because the player was stationary or paused (dist 2923 unchanged), so no samples were counted.\n- mod/beamng_earth/lua/ge/extensions/beamngEarth/perfmon.lua:46-52 compares dtSim to dtReal and ignores dtRaw.",
+    "verified": true,
+    "relevance": "The current metric needs replacing before mitigations can be validated."
+   },
+   {
+    "claim": "Physics runs on worker threads in parallel with the game-engine frame. If physics is slower than the frame, the frame waits, which raises raw frame time, and the same smoothing then applies.",
+    "evidence": "libbeamng strings: PhysicsWorker, PhysicsThreadManager, BeamCoreThread, oPhysSteps. The exe perf graph lists 'Potential Bottlenecks: frameLimiter ( / GameEngine / Physics / Vsync'.",
+    "verified": false,
+    "relevance": "In our data frames are bound by the game engine (streaming work), not by physics, so this path is secondary."
+   }
+  ],
+  "recommendations": [
+   {
+    "what": "Fix the measurement first. In perfmon.onPreRender(dtReal, dtSim, dtRaw), accumulate wall time (hptimer, or dtRaw) against dtSim. Report the cumulative lag (\u03a3wall \u2212 \u03a3sim), its min and max per window, and the per-100 ms sim speed. Optionally log dtReal\u2212dtRaw to see the filter directly. Flag a warp when sim speed over any 100 ms bucket is below 0.9 or above 1.1.",
+    "why": "The current dtSim/dtReal ratio compares two values from the same smoothed clock. It averages to 1.0 and cannot show the slowdown followed by catch-up.",
+    "cost": "About 15 lines of Lua in perfmon.lua and tools/perfmon.py.",
+    "risk": "Very low. Assumes dtRaw is the 3rd argument, which is inferred from the order of the main-loop arguments; cross-check it against hptimer once."
+   },
+   {
+    "what": "Never let heavy frames run back to back. Enforce a 'quiet window': after any frame whose wall time is more than about 1.5\u00d7 baseline (measured with hptimer, not dtReal), do no streaming work for the next 2 frames. In particular, block far-field imports for 2 frames before and after the terrain commit.",
+    "why": "The median-of-3 filter removes isolated spikes completely, leaving only a one-frame hitch. Two adjacent slow frames, or an H,L,H,L pattern, pass the median and drive the EMA warp. Simulated: commit + 15 imports gives 34% then 165% speed; the same imports every 3rd frame give no warp.",
+    "cost": "Small scheduler change in the far-field queue and terrain-follow (a frame-cost history ring using hptimer).",
+    "risk": "Streaming throughput drops to about one-third. Each spike still costs a visible micro-hitch, and its sim time is permanently skipped (not perceptible as a warp)."
+   },
+   {
+    "what": "Shrink and smooth per-frame cost instead of bursting it. Target at most about 2\u20133 ms of extra work per frame, and ramp the budget in and out over about 30\u201340 frames rather than switching it on and off. Measure the budget with hptimer and stop using dtReal for it.",
+    "why": "Any change in frame time \u0394 creates a sim-time error of roughly \u0394 \u00d7 13\u201340 frames. Simulated: +2.5 ms \u2192 minimum speed 82%, lag 32 ms; +6 ms switched on abruptly \u2192 57\u201371%; the same +6 ms ramped over 40 frames \u2192 87%.",
+    "cost": "Requires making each unit of work small. A 22\u201325 ms COLLADA import cannot be sliced, so it needs a cheaper loader (binary .cdae; the exe has a -cdaeCompressLevel flag, and docs/ARCHITECTURE.md:183 already plans it) or smaller tiles.",
+    "risk": "Medium effort. Full re-streams take longer."
+   },
+   {
+    "what": "Eliminate the ~60 ms terrain re-import commit. Update the existing TerrainBlock incrementally: setHeight plus updateGrid in 128\u00b2 slices at about 1.7 ms each, spread over frames. Physics picks the edits up by itself within about 0.5 s (docs/ARCHITECTURE.md:73).",
+    "why": "This removes the largest spike. Even when isolated it costs a 50 ms hitch, and next to imports it starts the warp.",
+    "cost": "Moderate: rework terrain-follow into a sliced shift and copy of the height grid.",
+    "risk": "Physics may briefly see old heights near slice boundaries (up to 0.5 s). Keep the edited region ahead of the vehicle."
+   },
+   {
+    "what": "Do not try to compensate by changing the timescale from Lua, and do not enable deterministic or fixed physics modes (be:setPhysicsSpeedFactor with a value other than 0).",
+    "why": "simTimeAuthority clamps the timescale to [0.001, 1], and the engine's EMA already overshoots on catch-up, so extra compensation would stack. Deterministic mode (techCore.lua:835) ties sim time to frame count (dt = 1/fps), which turns every slow frame directly into slow motion.",
+    "cost": "None.",
+    "risk": "None."
+   }
+  ],
+  "open_questions": [
+   "What sets the smoothing-bypass byte at [object@0x4d88a68 + 0x204]? When it is set, dtReal = raw dt and the warp mechanism would differ. Not identified: it could be a VR, replay or benchmark mode.",
+   "The model predicts a fast-forward phase (130\u2013165%) after each slowdown. Does the user notice it? Confirm in game with the corrected perfmon metric (cumulative \u03a3wall\u2212\u03a3sim and per-100 ms speed).",
+   "Is 0x1b2a8f0 (called at 0x11a18e0 with smoothed, dtSim, raw) really luaPreRender? The order of the 3 arguments makes it very likely, but it has not been confirmed symbolically.",
+   "How much do Lua GC steps add on the main thread during streaming? This has not been measured; the per-frame cost should be checked with hptimer around collectgarbage('count') deltas.",
+   "Physics uses the smoothed dt computed at the end of the previous frame (filter at 0x11a1928 runs after the physics call at 0x11a1722). This adds one more frame of lag, which the simulation does not model; it changes magnitudes only slightly."
+  ]
+ }
+]
