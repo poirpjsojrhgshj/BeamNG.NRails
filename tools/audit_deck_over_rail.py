@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: the free height under the road bridges over the railways round a point (real Overture cells
+"""NRails dev tool: the free height under the road bridges over the railways round a point (real Overture cells
 and elevation), upstream's decks (the NRails hook off) against ours: the deck's underside (top - roadmesh.DECK_DEPTH -
 GIRDER_D) over the rail top (nrails.decks.rail_top) where each deck part crosses a track on the ground.
 

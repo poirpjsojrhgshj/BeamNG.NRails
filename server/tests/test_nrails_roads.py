@@ -1,4 +1,4 @@
-"""EarthNRails: what the fork changes in BeamNG.Earth's roads (nrails.bridges, nrails.profile, nrails.hooks)."""
+"""NRails: what the fork changes in BeamNG.Earth's roads (nrails.bridges, nrails.profile, nrails.hooks)."""
 import json
 import os
 import sys

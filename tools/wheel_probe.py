@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: print the wheel definitions of a train mod (rows of "wheels"/"pressureWheels"/"hubWheels"/
+"""NRails: print the wheel definitions of a train mod (rows of "wheels"/"pressureWheels"/"hubWheels"/
 "monoHubWheels" sections and the nodes they name) to recover the wheelset's flange / tread positions. Read-only.
 
     .venv\\Scripts\\python.exe tools\\wheel_probe.py <zip> [filename-filter]

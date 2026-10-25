@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: kinematic envelope of the installed rolling stock, measured from the RAIL TOP.
+"""NRails: kinematic envelope of the installed rolling stock, measured from the RAIL TOP.
 
 Rail top = axle node height - tread radius (pressureWheels node1/node2 of the first wheel rows; the tread is the
 smaller of the two radii per axle, the flange disc the larger). Reports node height percentiles above the rail top

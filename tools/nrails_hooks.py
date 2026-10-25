@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: where the fork touches upstream's files, for merging a new BeamNG.Earth release.
+"""NRails dev tool: where the fork touches upstream's files, for merging a new BeamNG.Earth release.
 
 Everything the fork adds lives in its own files (server/nrails/, mod .../beamngEarth/nrails.lua, the nrails_*.py
 launchers, the Hub, the fork's key map and docs). Upstream's files only carry single lines marked "NRails hook".

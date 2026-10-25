@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: every road crossing a track round a point (real Overture cells and elevation), as the track
+"""NRails dev tool: every road crossing a track round a point (real Overture cells and elevation), as the track
 profile sorts it (nrails.rails.structure_masks): a level crossing (and why), or grade-separated (the road over / under
 the track: its ground masked for the track), with the DEM bump at the crossing; and the track's level there with
 and without the masks (BNGE_RAIL_SEP).

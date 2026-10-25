@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: the road bridges over roads round a point (real Overture cells and elevation): where each
+"""NRails dev tool: the road bridges over roads round a point (real Overture cells and elevation): where each
 deck part crosses a ground road, the deck's height over that road, upstream's decks (NRails' deck hook off) against
 ours (nrails.decks.deck_crossings: no junction at grade where the map does not join the two roads). A deck brought
 down to the road under it (a "junction at grade" that is none) shows as a free height near or under 0.

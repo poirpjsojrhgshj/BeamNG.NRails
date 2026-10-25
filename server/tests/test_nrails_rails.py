@@ -1,4 +1,4 @@
-"""EarthNRails: server/rails.py (track geometry, profile, turnouts, level crossings)."""
+"""NRails: server/rails.py (track geometry, profile, turnouts, level crossings)."""
 import os
 import sys
 import unittest
@@ -323,6 +323,47 @@ class TestTurnoutsAndCrossings(unittest.TestCase):
         P = np.concatenate(inner.P)
         self.assertAlmostEqual(np.abs(P[:, 1]).max(), rails.GAUGE_M / 2 - rails.X_FLANGEWAY_M)
         self.assertFalse(col.empty())
+
+    def test_crossing_slabs_follow_a_curved_climbing_track(self):
+        """A crossing on a 250 m curve climbing at 1 %: the slabs follow the track, never over its rail top (the
+        straight strip at the centre's height stood 0.18 m over it at its ends, under a WLD FS30-2's snowplow) and
+        never into the gauge on the curve's inside."""
+        R = 250.0
+        a = np.linspace(-0.08, 0.08, 81)
+        xy = np.c_[R * np.sin(a), R - R * np.cos(a)]
+        s = np.r_[0.0, np.cumsum(np.hypot(*np.diff(xy, axis=0).T))]
+        z = 0.5 + 0.01 * (s - s[40])
+        track = np.c_[xy, z]
+        x = {"at": xy[40], "z": 0.5, "z_road": 0.25, "half": 18.0, "t": np.array([1.0, 0.0]),
+             "n": np.array([0.0, 1.0])}
+        vis, col, inner = rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0))
+        tr = rails._track_near([(track, np.zeros(len(track), np.int8))], x["at"], x["half"])
+        self.assertIsNotNone(tr)
+        rails._platform(x, [], vis, col, inner, tr)
+        for m in (col, inner):
+            P = np.concatenate(m.P)
+            d = np.hypot(P[:, 0] - xy[:, None, 0], P[:, 1] - xy[:, None, 1])
+            j = np.argmin(d, axis=0)                            # each vertex's nearest track sample
+            self.assertLess((P[:, 2] - z[j]).max(), 0.02, "no slab over the rail top")
+        C = np.concatenate(col.P)
+        r = np.hypot(C[:, 0], C[:, 1] - R)                      # distance from the curve's centre
+        lateral = np.abs(R - r)
+        self.assertGreater(lateral[C[:, 2] > z.min() - 0.05].min(), rails.GAUGE_M / 2, "outer slabs off the gauge")
+
+    def test_no_cant_at_a_turnouts_zone(self):
+        """A canted curve with a turnout zone's points on it (the clear points): no cant within CANT_X_CLEAR_M of
+        them, full cant again 2 CANT_X_CLEAR_M away."""
+        if not rails.CANT_ON:
+            self.skipTest("cant off")
+        R = 400.0
+        a = np.linspace(0.0, 1.0, 201)
+        xy = np.c_[R * np.sin(a), R - R * np.cos(a)]
+        full = rails.cant_tilt(xy)
+        zone = [xy[i] for i in range(95, 106, 2)]                # ~20 m of a route's centre line
+        t = rails.cant_tilt(xy, zone)
+        self.assertGreater(np.abs(full[100]), 0.01)
+        self.assertAlmostEqual(float(t[100]), 0.0)
+        self.assertAlmostEqual(float(t[170]), float(full[170]))
 
     def test_parallel_tracks_share_one_platform(self):
         """Four tracks 4.5 m apart: the slabs meet half way between them, ramps only on the two outer sides."""

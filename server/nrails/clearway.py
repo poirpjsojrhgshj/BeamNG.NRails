@@ -1,4 +1,4 @@
-"""EarthNRails: the street furniture kept off the track (the user's run, 2026-10-25, a test town - a test city: "a chaque
+"""NRails: the street furniture kept off the track (the user's run, 2026-10-25, a test town - a test city: "a chaque
 passage ... ce cable electrique bloquant les 2 voies"; "presence d'arbres sur la voie (passage a niveau)").
 
 Upstream places utility poles, lamps, signs and street trees along each road and strings wires from pole to pole

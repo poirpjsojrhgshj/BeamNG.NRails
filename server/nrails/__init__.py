@@ -1,4 +1,4 @@
-"""BeamNG.EarthNRails: everything the fork adds to BeamNG.Earth lives in this package.
+"""BeamNG.NRails: everything the fork adds to BeamNG.Earth lives in this package.
 
 Upstream's files only carry short hooks, each marked "# NRails hook", that call into nrails.hooks. Merging a new
 upstream release is then a plain merge: the hooks are the only lines to look at when one conflicts (NRAILS.md,

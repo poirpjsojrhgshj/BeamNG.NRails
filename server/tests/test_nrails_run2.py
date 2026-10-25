@@ -1,4 +1,4 @@
-"""EarthNRails, the user's second run (2026-10-24): tracks side by side at one level, grade-separated crossings, the
+"""NRails, the user's second run (2026-10-24): tracks side by side at one level, grade-separated crossings, the
 collision's coarser line, viaduct sides, stations, deck junctions."""
 import os
 import sys

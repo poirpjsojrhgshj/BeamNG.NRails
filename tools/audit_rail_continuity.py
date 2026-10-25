@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: are the rails continuous? Builds the rail tiles of a square around a point (real Overture cells
+"""NRails dev tool: are the rails continuous? Builds the rail tiles of a square around a point (real Overture cells
 and DEM, like build_rail_tile.py) and checks every place a track piece ends:
   - seam: the piece ends at a tile edge; the neighbouring tile's piece of the same track must start there, at the same
     height (dz) and in line (gap = horizontal distance);

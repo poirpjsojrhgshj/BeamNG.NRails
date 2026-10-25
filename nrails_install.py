@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BeamNG.EarthNRails installer: upstream's install.py with the fork's names (standard library only).
+"""BeamNG.NRails installer: upstream's install.py with the fork's names (standard library only).
 
     python nrails_install.py [install.py's options]     (the Hub's "Installer / mettre à jour" runs this)
 
@@ -72,7 +72,7 @@ def install_mod(user_dir, assume_yes, dry_run, quiet=False):
     """upstream's install_mod under the fork's folder name, the upstream mod then turned off."""
     res = _upstream_install_mod(user_dir, assume_yes, dry_run, quiet)
     if not dry_run and deactivate_upstream(user_dir):
-        _up.say(f"Mod: turned the upstream '{UPSTREAM_MOD_NAME}' off in the game's mod list (EarthNRails replaces it; "
+        _up.say(f"Mod: turned the upstream '{UPSTREAM_MOD_NAME}' off in the game's mod list (NRails replaces it; "
                 "re-enable it in the Mod Manager or the Hub to go back).")
     return res
 

@@ -1,4 +1,4 @@
--- BeamNG.EarthNRails: the turnouts (the user's run, 2026-10-25: "je ne sais pas comment on se dirige sur les
+-- BeamNG.NRails: the turnouts (the user's run, 2026-10-25: "je ne sais pas comment on se dirige sur les
 -- aiguillages ... une chance sur le nombre de voies qu'un bogie aille sur la mauvaise voie"). The server gives each
 -- road tile its turnouts (data.railsw: id, at, dir (the way the routes leave), def (the straight route), routes: what
 -- (its collision shape "railswN" in this tile, or nil), side (+ left), line (its zone's centre line, flat x, y)): each

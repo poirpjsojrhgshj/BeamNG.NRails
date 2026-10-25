@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails end-to-end check without the game: start the real server (earthd.py, a temporary user folder, the real
+"""NRails end-to-end check without the game: start the real server (earthd.py, a temporary user folder, the real
 download cache), speak the mod's protocol (hello, prepare_anchor, commit, pose) at a place, collect the road tiles it
 sends and report their rail meshes (rail / railcol / railx shapes, level crossings), reading each .cdae back.
 

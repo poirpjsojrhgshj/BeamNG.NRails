@@ -1,4 +1,4 @@
-"""EarthNRails: thin slab decks over the railway (the user's run, 2026-10-25, a test town: "pont trop bas ... la route
+"""NRails: thin slab decks over the railway (the user's run, 2026-10-25, a test town: "pont trop bas ... la route
 passe bien au-dessus du renfort en beton qui est tres epais. desepaissis le renfort / autre variante de ponts pour
 petits ponts").
 

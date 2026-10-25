@@ -1,4 +1,4 @@
-"""EarthNRails: the functions upstream's files call, each from one line marked "# NRails hook".
+"""NRails: the functions upstream's files call, each from one line marked "# NRails hook".
 
     earthd.main / peerwork.main   boot(argv)                    the cache folder (nrails.paths) when none is given
     earthd.ANCHOR_TILE_FILES      ANCHOR_TILE_FILES             the shape file stems an anchor's prune must also clear

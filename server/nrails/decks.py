@@ -1,4 +1,4 @@
-"""EarthNRails: road bridges clear the railways under them (roads.BridgeProfiles, through nrails.hooks).
+"""NRails: road bridges clear the railways under them (roads.BridgeProfiles, through nrails.hooks).
 
 Upstream lifts a road deck DECK_ROAD_CLEAR (7.5 m, deck top over the road: ~5.3 m free under the girders) over the
 ground roads it crosses and knows nothing of the tracks: a deck could sit on the rails, or a bridge over a line in a

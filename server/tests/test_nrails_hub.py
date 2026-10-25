@@ -1,4 +1,4 @@
-"""EarthNRails Hub helpers (no window): the rails settings to the server's environment, the rail vehicle list file."""
+"""NRails Hub helpers (no window): the rails settings to the server's environment, the rail vehicle list file."""
 import json
 import os
 import sys

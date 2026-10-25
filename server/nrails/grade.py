@@ -1,4 +1,4 @@
-"""EarthNRails: the railway's bed in the terrain (through grading.Grader, nrails.hooks.cell_rail_plans).
+"""NRails: the railway's bed in the terrain (through grading.Grader, nrails.hooks.cell_rail_plans).
 
 The track (nrails.rails) floats over the DEM on its own profile: on an embankment where the grade cap raised it, in a
 cutting where the ground beside it is higher (a hillside, a tunnel's approach). The terrain stayed as it was: ballast

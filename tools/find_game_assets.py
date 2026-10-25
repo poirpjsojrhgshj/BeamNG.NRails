@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: list texture paths inside the game's content zips whose path matches a regex.
+"""NRails dev tool: list texture paths inside the game's content zips whose path matches a regex.
 
     .venv\\Scripts\\python.exe tools\\find_game_assets.py "assets/materials/.*(gravel|ballast)" [game dir]
 """

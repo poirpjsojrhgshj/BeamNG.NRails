@@ -1,4 +1,4 @@
-"""EarthNRails: one profile per map cell, shared by everything that needs the track's heights.
+"""NRails: one profile per map cell, shared by everything that needs the track's heights.
 
 Every road tile profiled its own window (the tile + rails.NEAR_M) and every map cell's grading plan again its own
 (nrails.grade): ~40 profiles of the same tracks per map cell, each its own window, so their heights met only within the

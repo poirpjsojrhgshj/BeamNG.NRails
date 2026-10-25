@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: zip mod/ (Lua sources + tests, no art) to build/mod_lua.zip, for running the Lua tests
+"""NRails dev tool: zip mod/ (Lua sources + tests, no art) to build/mod_lua.zip, for running the Lua tests
 under luajit on another machine. Read-only on the sources."""
 import os
 import zipfile

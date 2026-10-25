@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: start the real server (earthd.py, a fresh user folder kept under build/, the real download
+"""NRails dev tool: start the real server (earthd.py, a fresh user folder kept under build/, the real download
 cache), drive the mod's protocol at a place (hello, prepare_anchor, commit, pose) and keep every road tile it sends
 (JSON + shapes) in that folder for the audits (tools/audit_road_joints.py).
 

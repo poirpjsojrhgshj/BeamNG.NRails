@@ -1,4 +1,4 @@
-"""EarthNRails: a road's class bounds its profile, as the design rules of real roads do (France's ICTAAL / ARP: a
+"""NRails: a road's class bounds its profile, as the design rules of real roads do (France's ICTAAL / ARP: a
 motorway climbs 5-6 % at most, an expressway 7-8 %, with long vertical curves). The elevation data does not know
 that: a motorway in a cutting or on an embankment took the hillside's bumps (the user, 2026-10-24: "une autoroute ne va
 jamais avoir un trou au milieu ni un mur"). Its profile is smoothed longer, then held to its grade by cut and fill

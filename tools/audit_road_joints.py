@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: the steps where a bridge deck meets the road on the ground, in road tiles kept by
+"""NRails dev tool: the steps where a bridge deck meets the road on the ground, in road tiles kept by
 tools/e2e_collect.py. A deck's top (roadmesh.deck, it collides) ends at an edge; just past an end edge (0.5 m out)
 the road surface drawn there (roadmesh.build: draped LIFT over the graded physics ground) gives the ground's height.
 A step |deck - ground| over a few cm is what a tyre hits at speed.

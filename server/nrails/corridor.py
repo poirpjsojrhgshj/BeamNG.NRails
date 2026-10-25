@@ -1,4 +1,4 @@
-"""EarthNRails: the track's corridor cut into the terrain block (the user's run, 2026-10-25: "terrain qui bave sur les
+"""NRails: the track's corridor cut into the terrain block (the user's run, 2026-10-25: "terrain qui bave sur les
 voies ... envisage sur chaque rail que tu places peut-etre un rectangle d'extrusion du terrain").
 
 The railway's bed is graded through upstream's grader (nrails.grade), but other plans win where they overlap it: a road

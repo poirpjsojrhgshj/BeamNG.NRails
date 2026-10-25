@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: check the Windows/Linux runtime the companion server will use. Read-only; changes nothing.
+"""NRails: check the Windows/Linux runtime the companion server will use. Read-only; changes nothing.
 
     .venv\\Scripts\\python.exe tools\\check_env.py      (the interpreter start.py really uses)
     py tools\\check_env.py                               (any other interpreter, for comparison)

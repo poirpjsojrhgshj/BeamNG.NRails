@@ -1,4 +1,4 @@
-"""EarthNRails: approach slabs (French "dalles de transition") past the road bridges' abutments.
+"""NRails: approach slabs (French "dalles de transition") past the road bridges' abutments.
 
 A deck's abutment end sits at the ground's height there, but the physics ground is the terrain block's grid (2 m
 posts): the post nearest an abutment often stands down the embankment, and the ground dipped up to 0.75 m in the last

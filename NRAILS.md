@@ -1,4 +1,4 @@
-﻿# BeamNG.EarthNRails — BeamNG.Earth + real-world railways
+# BeamNG.NRails — BeamNG.Earth + real-world railways
 
 A fork of [BeamNG.Earth](https://github.com/TecnaGamer/BeamNG.Earth) (MIT, © TecnaGamer; currently on
 **1.6.1-beta**) that keeps its roads, buildings and terrain and adds the real rail network (Overture Maps /
@@ -24,7 +24,7 @@ The fork installs as `mods\unpacked\beamng_earthnrails` and turns the upstream `
 | **Ctrl+Shift+G** | reload area: the server asked for the whole area again |
 | **Ctrl+Shift+← / ↑ / →** | the next facing turnout ahead (600 m): left / straight (its default) / right |
 
-(Options → Controls → Bindings → Gameplay → *BeamNG.EarthNRails: …* to change them.)
+(Options → Controls → Bindings → Gameplay → *BeamNG.NRails: …* to change them.)
 
 ## How the fork is laid out (merging upstream)
 
@@ -132,6 +132,10 @@ Per 256 m road tile, next to the road meshes (same pipeline, pooling, rebase and
   a bogie can no longer pick the wrong track. The mod sets it: a trailing turnout follows the train, a facing one
   takes the choice made ahead (Ctrl+Shift+← / ↑ / →), else its straightest route. Diamonds and the rest: a rail's
   collision dropped where it runs inside another track's gauge (simplified frog).
+* **No cant through turnouts**: a turnout's routes at different cants twisted the set route's rails against each
+  other; the cant is 0 within 25 m of a turnout's zone and eased back in over 25 m (as at level crossings).
+* **Level crossing slabs follow the track** (its curve and grade, sample by sample): the straight strip at the
+  centre's height stood up to ~0.2 m over the rail top at its ends, under a WLD FS30-2's snowplow (0.13 m).
 * **Bridge piers off the tracks** (`nrails.clearway`): a road bridge's pier within 2.2 m of a track is left out.
 * **Tunnel portals on a cliff**: the ground next to a tunnel or a structure is median-filtered on its own side
   before the fill through it (a cliff read at a portal no longer lifts the whole bore).
@@ -204,6 +208,6 @@ solid for cars only while no rail vehicle is near.
 
 ## Credits and licence
 
-MIT, like upstream: BeamNG.Earth © TecnaGamer (see `LICENSE`, `CREDITS.md`); the EarthNRails additions © their
+MIT, like upstream: BeamNG.Earth © TecnaGamer (see `LICENSE`, `CREDITS.md`); the NRails additions © their
 authors. Map data © Overture Maps Foundation / OpenStreetMap contributors (ODbL). Rail vehicles are third-party
 mods, not included.

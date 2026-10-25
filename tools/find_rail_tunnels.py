@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: the railway tunnels (and bridges: --kind bridge) round a point (real Overture cells),
+"""NRails dev tool: the railway tunnels (and bridges: --kind bridge) round a point (real Overture cells),
 nearest first: their middle (lat, lon), length, class, segment id. To point tools/e2e_collect.py at.
 
     .venv\\Scripts\\python.exe tools\\find_rail_tunnels.py LAT LON [--km 10] [--kind tunnel]

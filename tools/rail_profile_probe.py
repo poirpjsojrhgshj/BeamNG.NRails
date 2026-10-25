@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: measure the rail geometry that existing track mods use (jbeam-built track: junction.zip = MRK switch,
+"""NRails: measure the rail geometry that existing track mods use (jbeam-built track: junction.zip = MRK switch,
 masuostt.zip = Maseukowice station). Clusters node X (across the track) and Z (height) to recover gauge, rail head
 width and rail height above the sleeper/ballast. Read-only.
 

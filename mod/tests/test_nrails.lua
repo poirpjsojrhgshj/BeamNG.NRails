@@ -1,4 +1,4 @@
--- luajit mod/tests/test_nrails.lua  (BeamNG.EarthNRails, nrails.lua: the railway meshes of the road tiles through
+-- luajit mod/tests/test_nrails.lua  (BeamNG.NRails, nrails.lua: the railway meshes of the road tiles through
 -- roads.lua's NRails hooks, the level crossings' slabs, the rail vehicles list, snap to rail)
 local dir = (arg[0]:match('^(.*)[/\\]') or '.')
 local T = dofile(dir .. '/testlib.lua')
@@ -76,6 +76,20 @@ do
   for _ = 1, 3 do roads.update(gov, 2) end
   by, n = byShape()
   T.check(n == 5 and by['/t/railx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final', 'train gone: solid again')
+  -- a fast train 400 m off (30 m/s: 12 s): the slab render-only already, the old solid one gone at once (no ghost
+  -- collision waiting for a far delete's rebuild), the rebuild urgent
+  train.getPosition = function() return vec3(1300, 900, 10) end
+  train.getVelocity = function() return vec3(-30, 0, 0) end
+  nrails.updateRailCrossings()
+  T.check(roads.urgentColliders(), 'a remade NRails mesh: the collision rebuild urgent')
+  by, n = byShape()
+  T.check(n == 4 and not by['/t/railx_2_3_3.cdae'], 'the solid slab deleted at once, before its successor is made')
+  for _ = 1, 3 do roads.update(gov, 2) end
+  by, n = byShape()
+  T.check(n == 5 and by['/t/railx_2_3_3.cdae'].fields.collisionType == 'None', 'a fast train 400 m off: render-only')
+  train.getVelocity = nil
+  train.getPosition = function() return vec3(5000, 900, 10) end
+  for _ = 1, 3 do roads.update(gov, 2) end
   local car = { getJBeamFilename = function() return 'etk800' end, getPosition = function() return vec3(900, 900, 10) end }
   be.getObject = function() return car end
   for _ = 1, 3 do roads.update(gov, 2) end

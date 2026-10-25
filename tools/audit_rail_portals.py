@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: is a rail tunnel's mouth clear? Round a point (real Overture cells and elevation, the terrain
+"""NRails dev tool: is a rail tunnel's mouth clear? Round a point (real Overture cells and elevation, the terrain
 graded as the game's: grading.Grader with the railway's bed), for every portal of the rail tunnels' tubes
 (nrails.rails.block_tubes): a terrain block's 2 m grid round it with the portal holes cut (tunnel_hole_mask, the game's
 kernel), then the train's way (TRAIN_HALF_M either side of the tube's centre line, from rail top + FLOOR_M up to the

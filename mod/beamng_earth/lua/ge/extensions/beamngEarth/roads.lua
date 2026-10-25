@@ -480,8 +480,19 @@ function M.extQueue(key, t, what, w, renderOnly)
   if not renderOnly then t.colWant[what] = true end
   if renderOnly or M.collideNear(t) then walkQ[#walkQ + 1] = q else parked[#parked + 1] = q end
 end
+-- (the one before deleted at once, not through deleteQ: deleteQ took a collider whose origin (its tile's corner) lay
+-- over DELETE_NEAR_M away for a far one, rebuilt up to RELOAD_DELETES_S later, and a reload could run before the
+-- delete: a level crossing's solid inner slab, a turnout's other route went on colliding as a ghost, the user's run
+-- 2026-10-25 "le chasse neige tape toujours"; M.extUrgentUntil: the next rebuild urgent (nrails.lua))
 function M.extRemake(key, t, what, w, renderOnly)
-  if t[what] then deleteQ[#deleteQ + 1] = t[what]; t[what] = nil end
+  if t[what] then
+    local id = t[what]
+    t[what] = nil
+    local o = scenetree and scenetree.findObjectById and scenetree.findObjectById(id)
+    if o then o:delete() end
+    slotObjGone(id)
+  end
+  M.extUrgentUntil = now() + 3000
   if t.cq then t.cq[what] = nil end
   local function purge(list)
     local keep = {}

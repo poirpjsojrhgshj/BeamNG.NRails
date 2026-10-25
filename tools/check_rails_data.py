@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: prove the live data path delivers rails. Fetches the 'roads' layer of one z14 cell through the real
+"""NRails: prove the live data path delivers rails. Fetches the 'roads' layer of one z14 cell through the real
 mapdata/overture/DuckDB pipeline (cache: server/paths.py default_cache_dir()) and counts subtype road vs rail + rail classes.
 
     .venv\\Scripts\\python.exe tools\\check_rails_data.py                 (a city station)

@@ -1,5 +1,5 @@
 @echo off
-rem BeamNG.EarthNRails Hub: install, start the server, start the game, settings. Double-click this file.
+rem BeamNG.NRails Hub: install, start the server, start the game, settings. Double-click this file.
 cd /d "%~dp0"
 if exist ".venv\Scripts\pythonw.exe" (
   start "" ".venv\Scripts\pythonw.exe" hub.py

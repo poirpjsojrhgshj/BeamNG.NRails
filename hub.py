@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BeamNG.EarthNRails Hub: one window to install, update, start and look after BeamNG.Earth + rails.
+"""BeamNG.NRails Hub: one window to install, update, start and look after BeamNG.Earth + rails.
 
 Standard library only (tkinter): it runs with any Python 3.10+, before the server's .venv exists.
 
@@ -7,7 +7,7 @@ Standard library only (tkinter): it runs with any Python 3.10+, before the serve
 
 Tabs: Home (status, install / update, start server, start game), Server (options, live log), Rails (track
 generation settings, passed to the server as BNGE_RAIL* environment variables), Cache (where the download cache lives,
-its size, its cap, cleaning the game's temp folders), Tools (environment check, mod switch EarthNRails / BeamNG.Earth,
+its size, its cap, cleaning the game's temp folders), Tools (environment check, mod switch NRails / BeamNG.Earth,
 folders). Settings are kept in .beamng_earthnrails.json next to this file (shared with install.py / start.py).
 """
 import json
@@ -71,7 +71,7 @@ TEXT = {
                    "Le serveur et le jeu doivent être fermés.",
         "purged": "Supprimé : {n} fichiers, {mb:.0f} Mo.", "busy": "Ferme d'abord le serveur et le jeu.",
         "check": "Vérifier l'environnement", "envelope": "Mesurer les trains installés",
-        "switch_fork": "Utiliser EarthNRails dans le jeu", "switch_up": "Revenir à BeamNG.Earth d'origine",
+        "switch_fork": "Utiliser NRails dans le jeu", "switch_up": "Revenir à BeamNG.Earth d'origine",
         "open_user": "Dossier utilisateur du jeu", "open_root": "Dossier du projet", "open_logs": "Journaux",
         "github": "Page GitHub", "lang": "Langue", "restart_note": "Redémarre le Hub pour changer la langue.",
         "game_running": "Le jeu tourne : ferme-le avant de changer de mod.", "done": "Terminé.",
@@ -106,7 +106,7 @@ TEXT = {
                    "The server and the game must be closed.",
         "purged": "Deleted: {n} files, {mb:.0f} MB.", "busy": "Close the server and the game first.",
         "check": "Check the environment", "envelope": "Measure the installed trains",
-        "switch_fork": "Use EarthNRails in the game", "switch_up": "Back to the original BeamNG.Earth",
+        "switch_fork": "Use NRails in the game", "switch_up": "Back to the original BeamNG.Earth",
         "open_user": "Game user folder", "open_root": "Project folder", "open_logs": "Logs",
         "github": "GitHub page", "lang": "Language", "restart_note": "Restart the Hub to change the language.",
         "game_running": "The game is running: close it before switching mods.", "done": "Done.",
@@ -307,7 +307,7 @@ class Hub(tk.Tk):
         super().__init__()
         self.s = load_settings()
         self.t = TEXT.get(self.s.get("lang", "fr"), TEXT["fr"])
-        self.title(f"BeamNG.EarthNRails Hub — {install.version()}")
+        self.title(f"BeamNG.NRails Hub — {install.version()}")
         self.geometry("980x680")
         self.minsize(820, 560)
         self.q = queue.Queue()
@@ -535,7 +535,7 @@ class Hub(tk.Tk):
         if ud:
             ms = install.mod_states(ud)
             word = lambda a: t["active"] if a is True else t["inactive"] if a is False else t["notinstalled"]  # noqa
-            st["mod"].set(f"EarthNRails : {word(ms[install.MOD_NAME])}   |   BeamNG.Earth : "
+            st["mod"].set(f"NRails : {word(ms[install.MOD_NAME])}   |   BeamNG.Earth : "
                           f"{word(ms[install.UPSTREAM_MOD_NAME])}")
         cd = self.cache_dir()
         real = os.path.realpath(cd) if os.path.exists(cd) else cd

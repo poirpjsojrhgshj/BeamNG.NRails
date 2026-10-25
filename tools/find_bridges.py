@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: the road bridges of given classes round a point (real Overture cells), nearest first:
+"""NRails dev tool: the road bridges of given classes round a point (real Overture cells), nearest first:
 their middle (lat, lon), length and class, to point tools/e2e_collect.py at.
 
     .venv\\Scripts\\python.exe tools\\find_bridges.py LAT LON [--km 4] [--cls motorway trunk]

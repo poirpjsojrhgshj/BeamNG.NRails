@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: every place a road meets a railway in the cells around a point, and what the generator makes
+"""NRails dev tool: every place a road meets a railway in the cells around a point, and what the generator makes
 of it (level crossing, road bridge over, road tunnel under, or a road the tile does not draw as a chunk).
 
     .venv\\Scripts\\python.exe tools\\audit_crossings.py LAT LON [--r 600]

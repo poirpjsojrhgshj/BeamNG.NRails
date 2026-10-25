@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: build the rail meshes of the road tiles around a place with real data (Overture cells + the
+"""NRails dev tool: build the rail meshes of the road tiles around a place with real data (Overture cells + the
 DEM from the cache, fetched if missing), write them as .cdae next to a JSON summary, and read them back (cdae.read).
 No game needed. Ground roads are taken as straight chunks from the same cells for the level-crossing test.
 

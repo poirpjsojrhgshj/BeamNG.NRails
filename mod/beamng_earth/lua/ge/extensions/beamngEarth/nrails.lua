@@ -1,4 +1,4 @@
--- BeamNG.EarthNRails: the railway in the road tiles (server/nrails). Everything the fork adds to the mod lives here;
+-- BeamNG.NRails: the railway in the road tiles (server/nrails). Everything the fork adds to the mod lives here;
 -- upstream's files only carry short hooks marked "NRails hook" (roads.lua: M.EXT_KINDS / M.ext / M.extQueue /
 -- M.extRemake; core.lua: require + init; ui.lua: the "Snap to rail" button).
 --
@@ -132,17 +132,26 @@ local function railVehiclePositions()
   for i = 0, be:getObjectCount() - 1 do
     local v = be:getObject(i)
     local ok, jb = pcall(function() return v:getJBeamFilename() end)
-    if ok and jb and M.RAIL_VEHICLES[jb] then out[#out + 1] = v:getPosition() end
+    if ok and jb and M.RAIL_VEHICLES[jb] then
+      local p = v:getPosition()
+      local okv, vel = pcall(function() return v:getVelocity() end)
+      local sp = (okv and vel) and math.sqrt(vel.x * vel.x + vel.y * vel.y) or 0
+      out[#out + 1] = { x = p.x, y = p.y, z = p.z, speed = sp }
+    end
   end
   return out
 end
 M._railVehiclePositions = railVehiclePositions
 
--- Is a rail vehicle within RAILX_CLEAR_M of one of the crossing centres pts ({x, y, z} rows)? (positions: optional)
+-- Is a rail vehicle within RAILX_CLEAR_M of one of the crossing centres pts ({x, y, z} rows), or within
+-- RAILX_AHEAD_S of driving at its speed (a fast train: the slab made render-only and the collision rebuilt in time)?
+-- (positions: optional, {x, y[, speed]})
+M.RAILX_AHEAD_S = 15
 function M.railVehicleNear(pts, positions)
   positions = positions or railVehiclePositions()
-  local r2 = M.RAILX_CLEAR_M * M.RAILX_CLEAR_M
   for _, p in ipairs(positions) do
+    local r = math.max(M.RAILX_CLEAR_M, (p.speed or 0) * M.RAILX_AHEAD_S)
+    local r2 = r * r
     for _, c in ipairs(pts or {}) do
       local dx, dy = p.x - c[1], p.y - c[2]
       if dx * dx + dy * dy <= r2 then return true end
@@ -455,6 +464,16 @@ function M.init(opts)
   if not have then roads.MATERIAL_FILES[#roads.MATERIAL_FILES + 1] = M.MATERIAL_FILE end
   if opts.anchor then M.anchor = opts.anchor end
   roads.ext = { onTile = onTile, update = M.update, lean = isCol, priority = M.priority }
+  -- a remade NRails mesh (a level crossing's slab, a turnout's route: roads.extRemake) makes the next collision rebuild
+  -- urgent (URGENT_GAP_S), not the RELOAD_EVERY_S of the other meshes: the train is on its way to it
+  if not M._urgentWrapped and roads.urgentColliders then
+    local orig = roads.urgentColliders
+    roads.urgentColliders = function(...)
+      if roads.extUrgentUntil and os.clock() * 1000 < roads.extUrgentUntil then return true end
+      return orig(...)
+    end
+    M._urgentWrapped = true
+  end
   pcall(function() require('beamngEarth/sea').ext = { physZ = M.physZ } end)
   pcall(M.loadVehicleList)
   pcall(function() M.wrapFoci(require('beamngEarth/collisionfoci')) end)

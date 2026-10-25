@@ -1,4 +1,4 @@
-"""EarthNRails: turnouts that can be set (the user's run, 2026-10-25: "les intersections entre voies (aiguillages) posent
+"""NRails: turnouts that can be set (the user's run, 2026-10-25: "les intersections entre voies (aiguillages) posent
 des problemes ... une chance sur le nombre de voies qu'un bogie aille sur la mauvaise voie; je ne sais pas comment on se
 dirige sur les aiguillages").
 

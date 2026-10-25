@@ -1,4 +1,4 @@
-"""EarthNRails: stations (the user's run, 2026-10-24: "au niveau des gares, les quais sont construits en batiments
+"""NRails: stations (the user's run, 2026-10-24: "au niveau des gares, les quais sont construits en batiments
 bloquant les voies").
 
 Two things went wrong at a station. The map's building footprints there include machine-learnt ones (Microsoft ML

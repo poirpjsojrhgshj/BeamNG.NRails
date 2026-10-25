@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: can a train go from A to B? (The user, 2026-10-24: "faire des voyages d'un point A à un point
+"""NRails dev tool: can a train go from A to B? (The user, 2026-10-24: "faire des voyages d'un point A à un point
 B suivant une méthode de génération simple et uniforme ... sans accroc".) Real Overture cells along the corridor A-B:
   1. the rail graph (heavy rail segments, joined where their ends meet within NODE_TOL_M or at a shared connector):
      the shortest path from the track nearest A to the one nearest B; without one, the gap: the closest approach of the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: does the terrain stand in a train's way? Round a point (real Overture cells and elevation,
+"""NRails dev tool: does the terrain stand in a train's way? Round a point (real Overture cells and elevation,
 the terrain graded as the game's: grading.Grader with the railway's bed, nrails.grade; the track's heights from the
 map cells' shared profiles, nrails.canon, as the game draws them), for every track in the open:
   - the train's way: the terrain over the train's floor line (rail top + FLOOR_M) within TRAIN_HALF_M of the centre;

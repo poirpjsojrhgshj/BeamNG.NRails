@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: read-only survey of the installed rail mods (zips in <user>/mods and mods/repo).
+"""NRails: read-only survey of the installed rail mods (zips in <user>/mods and mods/repo).
 
 For each zip: top-level content (vehicles / levels / art), and for each vehicle the bounding box of all its jbeam
 nodes (all part variants together, so an upper bound) -> length / width / height above the lowest node.

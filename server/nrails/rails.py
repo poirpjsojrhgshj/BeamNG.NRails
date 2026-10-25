@@ -1,4 +1,4 @@
-"""EarthNRails: physically drivable railway track for a road tile (TILE x TILE m of the anchor frame).
+"""NRails: physically drivable railway track for a road tile (TILE x TILE m of the anchor frame).
 
 Overture / OpenStreetMap rail segments (layer "roads", subtype "rail") become, per road tile:
 
@@ -26,7 +26,7 @@ segment are pinned to a height computed from that point alone (ground in a disc)
 Trams ("tram"): street track, flush with the road (grooved rail heads only, render-only, no collision: cars keep
 driving over them).
 
-Settings (environment, set by the EarthNRails Hub): BNGE_RAILS on|off, BNGE_RAIL_PROFILE uic60|uic54|uic50|jis60,
+Settings (environment, set by the NRails Hub): BNGE_RAILS on|off, BNGE_RAIL_PROFILE uic60|uic54|uic50|jis60,
 BNGE_RAIL_TRAMS on|off, BNGE_RAIL_CROSSINGS on|off. Pure but for elev (numpy only).
 """
 import logging
@@ -1491,7 +1491,7 @@ def curvature(xy, sigma_m=CANT_SIGMA_M):
 
 def cant_tilt(xy, clear_pts=()):
     """Per sample: the cant as a tilt (m of rise per m to the left of the centre line): -sign(k) c / CANT_SPAN_M,
-    c = min(CANT_MAX_M, 11.8 V^2 R / 1e3 ...) (see above); 0 near the points clear_pts (level crossings). Pure."""
+    c = min(CANT_MAX_M, 11.8 V^2 R / 1e3 ...) (see above); 0 near the points clear_pts (level crossings, turnouts' zones). Pure."""
     xy = np.asarray(xy, np.float64)
     if not CANT_ON or len(xy) < 3:
         return np.zeros(len(xy))
@@ -1501,9 +1501,14 @@ def cant_tilt(xy, clear_pts=()):
     c = np.minimum(CANT_MAX_M, 11.8 * v * v / R / 1000.0)
     c = np.where(R > 20000.0, 0.0, c)
     tilt = -np.sign(k) * c / CANT_SPAN_M
-    for p in clear_pts:
-        d = np.hypot(xy[:, 0] - p[0], xy[:, 1] - p[1])
-        tilt = tilt * np.clip((d - CANT_X_CLEAR_M) / CANT_X_CLEAR_M, 0.0, 1.0)
+    if len(clear_pts):
+        cp = np.asarray([[float(p[0]), float(p[1])] for p in clear_pts])
+        lo, hi = xy.min(axis=0) - 2 * CANT_X_CLEAR_M, xy.max(axis=0) + 2 * CANT_X_CLEAR_M
+        cp = cp[(cp[:, 0] >= lo[0]) & (cp[:, 0] <= hi[0]) & (cp[:, 1] >= lo[1]) & (cp[:, 1] <= hi[1])]
+        for k0 in range(0, len(cp), 256):           # (the nearest clear point: no cant within CANT_X_CLEAR_M, eased
+            c = cp[k0:k0 + 256]                     # back in over as much again)
+            d = np.hypot(xy[:, None, 0] - c[None, :, 0], xy[:, None, 1] - c[None, :, 1]).min(axis=1)
+            tilt = tilt * np.clip((d - CANT_X_CLEAR_M) / CANT_X_CLEAR_M, 0.0, 1.0)
     return tilt
 
 
@@ -1550,7 +1555,7 @@ def _bridge_runs(pts, bridge):
     return out
 
 
-# Viaducts (EarthNRails): the slab under the ballast gets a parapet each side (drawn and colliding: a derailed train
+# Viaducts (NRails): the slab under the ballast gets a parapet each side (drawn and colliding: a derailed train
 # stays on the deck) and, every BRIDGE_PIER_EVERY_M, a pier down into the ground (drawn; the ground read under it).
 BRIDGE_PARAPET = (0.25, 1.0)    # m thick, m over the slab's top, at the slab's edges
 BRIDGE_PIER_EVERY_M = 30.0
@@ -1910,19 +1915,53 @@ def crossings_on(xy, s, roads_near):
     return sorted(out, key=lambda o: o["s"])
 
 
-def _platform(x, others, vis, col, inner):
-    """The slabs of one track's level crossing at rail-top height x["z"]: the inner slab between the flangeways into
-    `inner` (drawn, solid only without a rail vehicle near), the outer slabs into `vis` + `col`. Towards a neighbouring
-    track of the same crossing (parallel tracks: x's cluster in `others`) the outer slab runs to half way, one platform
-    over all the tracks; on an outer side it ends in a ramp down to the road."""
+def _track_near(parts, at, half):
+    """The profiled track (parts: [(pts (n, 3), kind)]) within `half` m along it either side of its point nearest `at`:
+    (pts (m, 3), left normals (m, 2), index of the nearest), or None (no part within 2 STEP_M). Pure."""
+    best = None
+    at = np.asarray(at, np.float64)
+    for pts, _kd in parts:
+        pts = np.asarray(pts, np.float64)
+        if len(pts) < 2:
+            continue
+        d = np.hypot(pts[:, 0] - at[0], pts[:, 1] - at[1])
+        i = int(np.argmin(d))
+        if d[i] <= 2 * STEP_M and (best is None or d[i] < best[0]):
+            best = (float(d[i]), pts, i)
+    if best is None:
+        return None
+    _, pts, i = best
+    s = np.r_[0.0, np.cumsum(np.hypot(*np.diff(pts[:, :2], axis=0).T))]
+    sel = np.flatnonzero(np.abs(s - s[i]) <= half + 1e-6)
+    if len(sel) < 2:
+        return None
+    seg = pts[sel[0]:sel[-1] + 1]
+    return seg, normals(seg[:, :2]), i - sel[0]
+
+
+def _platform(x, others, vis, col, inner, track=None):
+    """The slabs of one track's level crossing: the inner slab between the flangeways into `inner` (drawn, solid only
+    without a rail vehicle near), the outer slabs into `vis` + `col`. Towards a neighbouring track of the same crossing
+    (parallel tracks: x's cluster in `others`) the outer slab runs to half way, one platform over all the tracks; on an
+    outer side it ends in a ramp down to the road. With `track` (_track_near: the profiled track along the crossing)
+    the slabs follow it, its curve and its rail top sample by sample; else a straight strip at x["z"]."""
     _, C, _, _ = profile()
     # (arrays: the shared profiles' disk cache gives them back as lists, 2026-10-25: "can't multiply sequence by
-    # non-int of type 'float'" lost whole road tiles' tracks, gaps by a test town station)
+    # non-int of type 'float'" lost whole road tiles' tracks)
     p, t, nrm = (np.asarray(x[k], np.float64) for k in ("at", "t", "n"))
     zr, zd = float(x["z"]), float(x["z_road"])
     hl = x["half"]
-    pts = np.array([[*(p - t * hl), zr], [*(p + t * hl), zr]])
-    nn = np.array([nrm, nrm])
+    if track is not None:
+        # (a straight strip at the centre's height stood over the rail top where the track curves or climbs: up to
+        # 0.18 m at a crossing's ends on a 1 % grade, under a WLD FS30-2's snowplow (0.13 m over the rail top), the
+        # user's run 2026-10-25: "le WLD ne passe pas les passages a niveau"; a TEM2 clears 0.20 m)
+        pts, nn, ic = track
+        if float(np.dot(nn[ic], nrm)) < 0:          # (the crossing's normal: the side of the others' offsets)
+            nn = -nn
+        nrm = nn[ic]
+    else:
+        pts = np.array([[*(p - t * hl), zr], [*(p + t * hl), zr]])
+        nn = np.array([nrm, nrm])
     gi = GAUGE_M / 2 - X_FLANGEWAY_M
     _box_strip(inner, pts, nn, -gi, gi, 0.0, -X_SLAB_DEPTH_M, MAT_CONCRETE)
     go = GAUGE_M / 2 + C
@@ -2339,11 +2378,32 @@ def build(frame, tx, ty, cells, elev, chunks=(), with_crossings=None, trams_on=N
         found[:] = [dict(x) for x in found if x["fid"] in index]       # (copies: the cache's are shared)
     else:
         pm = profile_network(ground, segments, near, roads_near, found, arcs, structs, conns)
+    # the turnouts (nrails.switches) reaching into the tile, and round it as far as their cant easing reaches
+    sws, sw_cant = [], []
+    if _on("BNGE_RAIL_SWITCHES"):
+        try:
+            from nrails import switches as swmod
+            reach = swmod.ZONE_MAX_M + swmod.ARM_M + 2 * CANT_X_CLEAR_M + 10.0
+            sw_feats = feats
+            if cell_fn is not None:     # (the map cells round the tile: every node's routes whole, in every tile)
+                more = [cell_fn(kk) for kk in roads.cells_of_tile(frame, tx, ty, margin=reach)]
+                sw_feats = rail_features(more, frame, (x0 - 400.0, y0 - 400.0, x1 + 400.0, y1 + 400.0))
+            lines = swmod.lines_of(sw_feats)
+            sws = swmod.find(lines, box)
+            m = 2 * CANT_X_CLEAR_M + 5.0
+            sw_cant = [q for sw in swmod.find(lines, (x0 - m, y0 - m, x1 + m, y1 + m))
+                       for r in sw.routes for q in r.xy[::2]]
+        except Exception as e:      # noqa: BLE001 - the turnouts as before (both routes' rails, the frog mask)
+            _log_once(f"turnouts: {type(e).__name__}: {e}")
+            sws, sw_cant = [], []
     for fid, parts in pm.items():
         if fid not in index:
             continue
         if xat is None:
-            xat = [x["at"] for x in found]
+            # (no cant at level crossings nor through turnouts: a turnout's routes at different cants left the set
+            # route's rails twisted against the other's, the user's run 2026-10-25: "les aiguillages ... pas prenables
+            # quand les voies sont twistees")
+            xat = [x["at"] for x in found] + sw_cant
         for (pts, kd), arc in zip(parts, arcs[fid]):
             aux = np.c_[kd, cant_tilt(pts[:, :2], xat), arc]
             for piece, b in clip_track(pts, aux, box):
@@ -2356,19 +2416,8 @@ def build(frame, tx, ty, cells, elev, chunks=(), with_crossings=None, trams_on=N
         return None
     centres = [(p[:, :2], k) for k, p, _ in heavy]
     xpts, xboxes = [], []
-    # the turnouts reaching into the tile (nrails.switches): their routes' rails in shapes of their own
-    sws, sw_meshes = [], {}
-    if _on("BNGE_RAIL_SWITCHES"):
-        try:
-            from nrails import switches as swmod
-            sw_feats = feats
-            if cell_fn is not None:     # (the map cells round the tile: every node's routes whole, in every tile)
-                more = [cell_fn(kk) for kk in roads.cells_of_tile(frame, tx, ty, margin=swmod.ZONE_MAX_M + swmod.ARM_M)]
-                sw_feats = rail_features(more, frame, (x0 - 400.0, y0 - 400.0, x1 + 400.0, y1 + 400.0))
-            sws = swmod.find(swmod.lines_of(sw_feats), box)
-        except Exception as e:      # noqa: BLE001 - the turnouts as before (both routes' rails, the frog mask)
-            _log_once(f"turnouts: {type(e).__name__}: {e}")
-            sws = []
+    # the turnouts reaching into the tile (sws, above): their routes' rails in shapes of their own
+    sw_meshes = {}
     fid_of = {kk: f for f, kk in index.items()}
     for (k, pts, br), tl, arc in zip(heavy, tilts, parcs):
         nrm = normals(pts[:, :2])
@@ -2416,7 +2465,7 @@ def build(frame, tx, ty, cells, elev, chunks=(), with_crossings=None, trams_on=N
         others = [o for o in found if o is not x and o["road"] == x["road"] and o["k"] != x["k"]
                   and np.hypot(*(np.asarray(o["at"]) - np.asarray(x["at"]))) <= X_CLUSTER_M + X_HALF_MAX_M]
         try:                                        # (one crossing's slab never costs the tile its track)
-            _platform(x, others, vis, col, inner)
+            _platform(x, others, vis, col, inner, _track_near(pm.get(x["fid"], ()), x["at"], x["half"]))
         except Exception as e:      # noqa: BLE001
             _log_once(f"level crossing slab: {type(e).__name__}: {e}")
             continue

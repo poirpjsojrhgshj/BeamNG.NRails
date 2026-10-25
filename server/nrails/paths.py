@@ -1,4 +1,4 @@
-"""EarthNRails: the one place that says where the download cache lives (standard library only).
+"""NRails: the one place that says where the download cache lives (standard library only).
 
 Upstream's server takes its cache from --cache-dir (default ~/.cache/beamng-earth); nrails.hooks.boot hands it this
 folder when the command line names none. Order:

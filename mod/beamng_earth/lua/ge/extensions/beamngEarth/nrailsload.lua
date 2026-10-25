@@ -1,4 +1,4 @@
--- BeamNG.EarthNRails: the load guard (the user, 2026-10-24: "a chaque fois que la map charge des elements, montre
+-- BeamNG.NRails: the load guard (the user, 2026-10-24: "a chaque fois que la map charge des elements, montre
 -- l'operation de chargement dans un ecran gris comme quand on se teleporte"). While driving, the car can reach road /
 -- rail tiles whose colliders are not made yet (the server or the mod's queue behind: a fast train, a motorway): it
 -- drove onto bare terrain or through a viaduct that was not there. The guard looks ahead along the car's path; when a

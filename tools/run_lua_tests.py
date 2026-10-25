@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: run the mod's Lua tests (mod/tests/test_*.lua, written for `luajit mod/tests/test_x.lua`) under the
+"""NRails: run the mod's Lua tests (mod/tests/test_*.lua, written for `luajit mod/tests/test_x.lua`) under the
 LuaJIT that the `lupa` package bundles, for Windows machines without a luajit binary.
 
     python -m pip install --target build\\pylibs lupa        (once)

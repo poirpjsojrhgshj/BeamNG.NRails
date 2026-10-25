@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails dev tool: a top view (PNG) of the road tiles kept by tools/e2e_collect.py: the road mesh grey (its
+"""NRails dev tool: a top view (PNG) of the road tiles kept by tools/e2e_collect.py: the road mesh grey (its
 shade: its height), the decks' tops blue, the rails' collision red. Holes and joints show at a glance.
 
     .venv\\Scripts\\python.exe tools\\plot_road_tiles.py [build\\e2e_keep] --box X0 Y0 X1 Y1 [--px 0.25] [--out f.png]

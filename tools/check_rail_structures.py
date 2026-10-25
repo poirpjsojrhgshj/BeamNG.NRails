@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EarthNRails: how many rail segments get bridge / tunnel ranges from the CURRENT pipeline (roads.level_ranges:
+"""NRails: how many rail segments get bridge / tunnel ranges from the CURRENT pipeline (roads.level_ranges:
 road_flags + level_rules). Rails carry their flags in Overture's rail_flags, which overture.py does not read yet.
 
     .venv\\Scripts\\python.exe tools\\check_rail_structures.py [lat lon ...]
