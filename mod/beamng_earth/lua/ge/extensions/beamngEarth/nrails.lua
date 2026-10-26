@@ -2,8 +2,8 @@
 -- upstream's files only carry short hooks marked "NRails hook" (roads.lua: M.EXT_KINDS / M.ext / M.extQueue /
 -- M.extRemake; core.lua: require + init; ui.lua: the "Snap to rail" button).
 --
--- A road tile's railway meshes: "rail".."rail4" drawn only, "railcol".."railcol4" a collision detail (the rails' and
--- the ballast's boxes, never drawn), "railtun" the rail tunnels' tubes and portals (drawn and colliding), "railx" the
+-- A road tile's railway meshes: "nrail".."nrail4" drawn only, "nrailcol".."nrailcol4" a collision detail (the rails' and
+-- the ballast's boxes, never drawn), "nrailtun" the rail tunnels' tubes and portals (drawn and colliding), "nrailx" the
 -- level crossings' inner slabs: drawn always, solid only while no rail vehicle is within RAILX_CLEAR_M of one of the
 -- tile's crossings (the rail mods' wheelsets carry a 1.37 m "flange disc" that fills the space between the rails: a
 -- slab there would stop the train).
@@ -14,11 +14,12 @@ local stopwatch = require('beamngEarth/stopwatch')
 
 -- (the collision in parts of ~5k triangles at most, up to 12: the engine's static collision rebuild took 5-22 s per
 -- rebuild with a 20k-triangle railcol or a 62k-triangle terrain patch in, 2026-10-24)
-M.KINDS = { 'rail', 'rail2', 'rail3', 'rail4', 'railx', 'railtun' }
-for k = 1, 12 do M.KINDS[#M.KINDS + 1] = k == 1 and 'railcol' or ('railcol' .. k) end
+-- ('nrail': BeamNG.Earth 1.6.3 has a 'rail' kind of its own, colliding, made by roads.lua itself)
+M.KINDS = { 'nrail', 'nrail2', 'nrail3', 'nrail4', 'nrailx', 'nrailtun' }
+for k = 1, 12 do M.KINDS[#M.KINDS + 1] = k == 1 and 'nrailcol' or ('nrailcol' .. k) end
 -- the turnouts' routes' rails in their switch zones (nrailsswitch.lua): collision only, solid for the set route
 M.SW_MAX = 48
-for k = 1, M.SW_MAX do M.KINDS[#M.KINDS + 1] = 'railsw' .. k end
+for k = 1, M.SW_MAX do M.KINDS[#M.KINDS + 1] = 'nrailsw' .. k end
 local switch = require('beamngEarth/nrailsswitch')
 M.switch = switch
 M.MATERIAL_FILE = '/levels/beamng_earth/art/shapes/beamngEarth/rails.materials.json'
@@ -29,10 +30,10 @@ M.VEHICLES_FILE = '/settings/beamngEarth/nrails_vehicles.json'
 M.RAILX_CLEAR_M = 150
 M.RAILX_CHECK_S = 0.5
 
-local function isSw(what) return what:sub(1, 6) == 'railsw' end
-local function isCol(what) return what:sub(1, 7) == 'railcol' or isSw(what) end
-local function isDrawnOnly(what) return what:sub(1, 4) == 'rail' and not isCol(what) and what ~= 'railx'
-  and what ~= 'railtun' end
+local function isSw(what) return what:sub(1, 7) == 'nrailsw' end
+local function isCol(what) return what:sub(1, 8) == 'nrailcol' or isSw(what) end
+local function isDrawnOnly(what) return what:sub(1, 5) == 'nrail' and not isCol(what) and what ~= 'nrailx'
+  and what ~= 'nrailtun' end
 M._isCol, M._isDrawnOnly = isCol, isDrawnOnly
 
 local setStatus = function() end
@@ -57,31 +58,41 @@ function M.isRailVehicle(jbeam) return jbeam ~= nil and M.RAIL_VEHICLES[jbeam] =
 -- roads.ext.onTile: a road tile's railway meshes queued (render-only, colliding, the crossings' slabs)
 local function onTile(key, t, data)
   if type(data.rail_lines) == 'table' and data.rail_lines[1] then t.railLines = data.rail_lines end   -- (snapToRail)
+  t.railsig = (type(data.railsig) == 'table' and data.railsig[1]) and data.railsig or nil         -- (the signals)
   if type(data.railx_pts) == 'table' and data.railx_pts[1] then
     t.railxPts = data.railx_pts
     t.railxSolid = not M.railVehicleNear(t.railxPts)
   end
-  -- the turnouts: which route of which turnout each "railswN" shape is
-  t.swOf, t.swWalk = {}, {}
+  -- the turnouts: which route of which turnout each "nrailswN" shape is
+  -- (t.swNeed: each "nrailswN" shape's need {{turnout id, route}, ...}; an older server's data: one route each)
+  t.swNeed, t.swWalk, t.swSolid = {}, {}, {}
   if type(data.railsw) == 'table' and data.railsw[1] then
     t.railsw = data.railsw
-    for _, sw in ipairs(data.railsw) do
-      for i, r in ipairs(sw.routes or {}) do
-        if r.what then t.swOf[r.what] = { sw = sw, idx = i } end
+    if type(data.railsw_shapes) == 'table' and data.railsw_shapes[1] then
+      for _, s in ipairs(data.railsw_shapes) do
+        if s.what then t.swNeed[s.what] = s.need or {} end
+      end
+    else
+      for _, sw in ipairs(data.railsw) do
+        for i, r in ipairs(sw.routes or {}) do
+          if r.what then t.swNeed[r.what] = { { sw.id, i } } end
+        end
       end
     end
   end
+  local byId = t.railsw and switch.collect({ t }) or {}
   for _, what in ipairs(M.KINDS) do
     local w = data[what]
     if type(w) == 'table' and w.shape and type(w.pos) == 'table' then
-      if what == 'railx' then t.railxWalk = w end
+      if what == 'nrailx' then t.railxWalk = w end
       local off = false
       if isSw(what) then
         t.swWalk[what] = w
-        local o = t.swOf[what]
-        off = o ~= nil and switch.current(o.sw) ~= o.idx      -- (not the set route: not solid)
+        local need = t.swNeed[what]
+        off = need ~= nil and not switch.needMet(need, byId)   -- (not the set routes: not solid)
+        t.swSolid[what] = not off
       end
-      roads.extQueue(key, t, what, w, isDrawnOnly(what) or off or (what == 'railx' and t.railxSolid == false))
+      roads.extQueue(key, t, what, w, isDrawnOnly(what) or off or (what == 'nrailx' and t.railxSolid == false))
     end
   end
 end
@@ -89,10 +100,19 @@ end
 -- A turnout set to route idx: its routes' shapes in every tile made again, the set one solid.
 function M.setSwitch(id, idx)
   switch.state[id] = idx
+  local byId = switch.collect(roads.extTiles())
   for key, t in pairs(roads.extTiles()) do
-    if t.swOf and not t.ghost then
-      for what, o in pairs(t.swOf) do
-        if o.sw.id == id and t.swWalk[what] then roads.extRemake(key, t, what, t.swWalk[what], o.idx ~= idx) end
+    if t.swNeed and not t.ghost then
+      for what, need in pairs(t.swNeed) do
+        local mine = false
+        for _, n in ipairs(need) do if n[1] == id then mine = true end end
+        if mine and t.swWalk[what] then
+          local solid = switch.needMet(need, byId)
+          if solid ~= t.swSolid[what] then
+            t.swSolid[what] = solid
+            roads.extRemake(key, t, what, t.swWalk[what], not solid)
+          end
+        end
       end
     end
   end
@@ -111,34 +131,84 @@ local sinceSw = stopwatch.new()
 function M.updateSwitches()
   if sinceSw() < M.SW_CHECK_S * 1000 then return end
   sinceSw = stopwatch.new()
-  local veh = rawget(_G, 'getPlayerVehicle') and getPlayerVehicle(0)
-  if not veh then return end
-  local p = veh:getPosition()
-  local v = veh.getVelocity and veh:getVelocity() or { x = 0, y = 0 }
-  local _, list = switch.collect(roads.extTiles())
-  if not list[1] then return end
-  local changes, used = switch.step(list, { x = p.x, y = p.y, vx = v.x or 0, vy = v.y or 0 })
+  local byId, list = switch.collect(roads.extTiles())
+  M._swById, M._swList = byId, list                -- (the diagram and the signals)
+  if not list[1] then M._nextFacing = nil; return end
+  local cars = M.scene()                           -- every rail vehicle (a train sets the turnouts it runs through)
+  if not cars[1] then return end
+  local changes, used, nextFacing = switch.step(list, cars)
+  M._nextFacing = nextFacing
   for id, idx in pairs(changes) do M.setSwitch(id, idx) end
   if used then
     switch.pending = nil
     setStatus('NRails: aiguillage regle / turnout set')
   end
+  -- the next turnout ahead of the player, once per turnout: its distance and the route it is set to
+  local nf = nextFacing and nextFacing.sw
+  if nf and nf.id ~= M._lastFacing then
+    M._lastFacing = nf.id
+    local cur, n = switch.current(nf), #(nf.routes or {})
+    local word = (cur == (nf.def or 0) + 1) and 'ligne principale / main line'
+      or (cur == 1 and 'a gauche / left') or (cur == n and 'a droite / right') or 'tout droit / straight'
+    setStatus(string.format('NRails: aiguillage dans %d m : %s (Ctrl+Shift+fleches)', math.floor(nextFacing.dist), word))
+  elseif not nf then
+    M._lastFacing = nil
+  end
 end
+
+-- The rail vehicles and the player in the scene, scanned once every SCENE_S for the turnouts and the level crossings
+-- alike (one pass over the objects, not one per user: the CPU cost of the mod each frame kept low):
+-- { x, y, z, vx, vy, speed, player, rail } rows.
+M.SCENE_S = 0.2
+local sceneRows, sceneAt = {}, -1
+local function jbeamOf(v) return v:getJBeamFilename() end
+local function posOf(v) return v:getPosition() end
+local function velOf(v) return v:getVelocity() end
+local function idOf(v) return v:getID() end
+local function dirOf(v) return v:getDirectionVector() end
+function M.scene(now)
+  now = now or os.clock()
+  if now - sceneAt < M.SCENE_S and now >= sceneAt then return sceneRows end
+  sceneAt = now
+  local out = {}
+  local player = rawget(_G, 'getPlayerVehicle') and getPlayerVehicle(0)
+  local pid = nil
+  if player and player.getID then local ok, id = pcall(idOf, player); pid = ok and id or nil end
+  local function add(v, isPlayer, isRail)
+    local okp, p = pcall(posOf, v)
+    if not okp or not p then return end
+    local okv, vel = pcall(velOf, v)
+    local vx, vy = 0, 0
+    if okv and vel then vx, vy = vel.x or 0, vel.y or 0 end
+    local fx, fy = nil, nil                         -- (the way it faces: a train stopped still sees its next turnout)
+    if isPlayer then
+      local okd, d = pcall(dirOf, v)
+      if okd and d then fx, fy = d.x, d.y end
+    end
+    out[#out + 1] = { x = p.x, y = p.y, z = p.z, vx = vx, vy = vy, speed = math.sqrt(vx * vx + vy * vy),
+      fx = fx, fy = fy, player = isPlayer, rail = isRail }
+  end
+  if be and be.getObjectCount then
+    for i = 0, be:getObjectCount() - 1 do
+      local v = be:getObject(i)
+      local ok, jb = pcall(jbeamOf, v)
+      local isRail = ok and jb ~= nil and M.RAIL_VEHICLES[jb] == true
+      local isPlayer = false
+      if pid ~= nil and v.getID then local okI, id = pcall(idOf, v); isPlayer = okI and id == pid end
+      if isRail or isPlayer then add(v, isPlayer, isRail) end
+    end
+  elseif player then
+    add(player, true, true)
+  end
+  sceneRows = out
+  return out
+end
+function M._resetScene() sceneAt = -1 end
 
 -- The positions of the rail vehicles (M.RAIL_VEHICLES by jbeam name) in the scene.
 local function railVehiclePositions()
   local out = {}
-  if not be or not be.getObjectCount then return out end
-  for i = 0, be:getObjectCount() - 1 do
-    local v = be:getObject(i)
-    local ok, jb = pcall(function() return v:getJBeamFilename() end)
-    if ok and jb and M.RAIL_VEHICLES[jb] then
-      local p = v:getPosition()
-      local okv, vel = pcall(function() return v:getVelocity() end)
-      local sp = (okv and vel) and math.sqrt(vel.x * vel.x + vel.y * vel.y) or 0
-      out[#out + 1] = { x = p.x, y = p.y, z = p.z, speed = sp }
-    end
-  end
+  for _, r in ipairs(M.scene()) do if r.rail then out[#out + 1] = r end end
   return out
 end
 M._railVehiclePositions = railVehiclePositions
@@ -173,7 +243,7 @@ function M.updateRailCrossings()
       local solid = not M.railVehicleNear(t.railxPts, positions)
       if solid ~= t.railxSolid then
         t.railxSolid = solid
-        roads.extRemake(key, t, 'railx', t.railxWalk, not solid)
+        roads.extRemake(key, t, 'nrailx', t.railxWalk, not solid)
       end
     end
   end
@@ -211,7 +281,7 @@ function M.nearestRail(x, y, z, maxD)
             if d2 <= maxD * maxD and (not best or d2 < best.d2) then
               local l = math.sqrt(l2 + ez * ez)
               best = { d2 = d2, x = px, y = py, z = pz, dx = ex / l, dy = ey / l, dz = ez / l, key = key,
-                colReady = t.railcol ~= nil }
+                colReady = t.nrailcol ~= nil }
             end
           end
         end
@@ -220,6 +290,66 @@ function M.nearestRail(x, y, z, maxD)
   end
   if best then best.dist = math.sqrt(best.d2) end
   return best
+end
+
+-- The tracks within maxD of (x, y[, z]): their nearest points, one per track (a track cut over several tiles' rows
+-- counted once: points within SNAP_SAME_M of a nearer one dropped), nearest first (M.snapToRail's cycle).
+M.SNAP_SAME_M = 2.0
+function M.nearestRails(x, y, z, maxD)
+  maxD = maxD or M.SNAP_MAX_M
+  local cands = {}
+  local reach = roads.TILE_M + maxD
+  for key, t in pairs(roads.extTiles()) do
+    if t.railLines and not t.ghost
+        and (not t.cx or (math.abs(t.cx - x) <= reach and math.abs(t.cy - y) <= reach)) then
+      for _, row in ipairs(t.railLines) do
+        local best
+        for i = 1, #row - 5, 3 do
+          local ax, ay, az, bx, by, bz = row[i], row[i + 1], row[i + 2], row[i + 3], row[i + 4], row[i + 5]
+          local ex, ey, ez = bx - ax, by - ay, bz - az
+          local l2 = ex * ex + ey * ey
+          if l2 > 1e-8 then
+            local u = math.max(0, math.min(1, ((x - ax) * ex + (y - ay) * ey) / l2))
+            local px, py, pz = ax + u * ex, ay + u * ey, az + u * ez
+            local dz = z and (pz - z) * M.SNAP_Z_WEIGHT or 0
+            local d2 = (px - x) ^ 2 + (py - y) ^ 2 + dz * dz
+            if d2 <= maxD * maxD and (not best or d2 < best.d2) then
+              local l = math.sqrt(l2 + ez * ez)
+              best = { d2 = d2, x = px, y = py, z = pz, dx = ex / l, dy = ey / l, dz = ez / l, key = key,
+                colReady = t.nrailcol ~= nil }
+            end
+          end
+        end
+        if best then cands[#cands + 1] = best end
+      end
+    end
+  end
+  table.sort(cands, function(a, b) return a.d2 < b.d2 end)
+  local out = {}
+  for _, c in ipairs(cands) do
+    local dup = false
+    for _, o in ipairs(out) do
+      if (c.x - o.x) ^ 2 + (c.y - o.y) ^ 2 < M.SNAP_SAME_M ^ 2 then dup = true; break end
+    end
+    if not dup then c.dist = math.sqrt(c.d2); out[#out + 1] = c end
+  end
+  return out
+end
+
+-- Snap to rail pressed again within SNAP_CYCLE_S with the vehicle where it was put: the next track round the spot it
+-- was first pressed at (the user, 2026-10-26: "quand on spam ctrl+shift+t, ca cycle parmi les rails adjacents").
+M.SNAP_CYCLE_S = 6
+M._snapCycle = nil
+function M.snapPick(p, now)
+  local c = M._snapCycle
+  if c and now - c.at <= M.SNAP_CYCLE_S and (p.x - c.lx) ^ 2 + (p.y - c.ly) ^ 2 < 9 and #c.list > 1 then
+    c.idx = c.idx % #c.list + 1
+    return c.list[c.idx], c.idx, #c.list, c
+  end
+  local list = M.nearestRails(p.x, p.y, p.z)
+  if not list[1] then return nil end
+  c = { list = list, idx = 1 }
+  return list[1], 1, #list, c
 end
 
 -- The pose of a vehicle snapped onto the track point r (M.nearestRail): its forward along the track the way it faced
@@ -261,7 +391,9 @@ function M.snapToRail(maxD)
   local veh = getPlayerVehicle and getPlayerVehicle(0)
   if not veh then setStatus('Snap to rail: no vehicle'); return false end
   local p = veh:getPosition()
-  local r = M.nearestRail(p.x, p.y, p.z, maxD)
+  local r, idx, n, cyc
+  if maxD then r = M.nearestRail(p.x, p.y, p.z, maxD); idx, n = 1, 1
+  else r, idx, n, cyc = M.snapPick(p, os.clock()) end
   if not r then
     setStatus(string.format('Snap to rail: no track within %d m (are rails on in the Hub?)', maxD or M.SNAP_MAX_M))
     return false
@@ -285,11 +417,50 @@ function M.snapToRail(maxD)
   veh:resetBrokenFlexMesh()
   veh:setPositionRotation(x, y, z, rot.x, rot.y, rot.z, rot.w)
   pcall(function() veh:queueLuaCommand('recovery.clear()') end)
-  setStatus(string.format('Snapped onto the track %.1f m away%s', r.dist,
+  if cyc then cyc.at, cyc.lx, cyc.ly = os.clock(), x, y; M._snapCycle = cyc end
+  setStatus(string.format('Snapped onto the track %.1f m away%s%s', r.dist,
+    (n or 1) > 1 and string.format(' - voie %d/%d (Ctrl+Shift+T encore : la suivante)', idx, n) or '',
     r.colReady and '' or ' (its collision is still loading: wait a moment before driving)'))
   log('I', 'beamngEarth', string.format('nrails snapToRail: %s at %.2f, %.2f, %.2f (rail top %.2f, ref over bottom %.2f%s)',
     tostring(jb), x, y, z, r.z, over, isRail and ', rail vehicle' or ''))
   return true
+end
+
+-- Couple / uncouple (the user, 2026-10-26: "un bouton pour attacher un ou des rails"): the couplers of the player's
+-- vehicle and of every rail vehicle within COUPLE_M of it (BeamNG's beamstate couplers: auto-coupling on and the
+-- couplers in reach attached; or detached and auto-coupling off). Returns how many vehicles were told.
+M.COUPLE_M = 80
+-- (the rail mods put "tag" on one end and "couplerTag" on the other, the coupler part's variant (A / B) choosing which:
+-- two vehicles meeting tag end to tag end never coupled with beamstate's auto-coupling (the user's run, 2026-10-26:
+-- "couplers touching" and nothing). So every coupler node of the vehicle, couplerTag or a coupler "tag", asks the
+-- engine itself (obj:attachCoupler) for a node of the other vehicle with its tag within its coupler radius; the
+-- auto-coupling on for those tags too.)
+M.COUPLE_CMD = 'local s = {} for _, n in pairs(v.data.nodes or {}) do local t = n.couplerTag or (type(n.tag) == "string" and n.tag:find("coupler", 1, true) and n.tag) if t and n.cid then s[t] = true obj:attachCoupler(n.cid, t, n.couplerStrength or 3000000, math.max(n.couplerRadius or 0, 1.5), n.couplerLockRadius or 0.025, n.couplerLatchSpeed or 0.3, 0) end end local l = {} for t in pairs(s) do l[#l + 1] = t end if #l > 0 and beamstate.activateAutoCoupling then beamstate.activateAutoCoupling(l) end'
+M.UNCOUPLE_CMD = 'if beamstate.disableAutoCoupling then beamstate.disableAutoCoupling() end for _, n in pairs(v.data.nodes or {}) do local t = n.couplerTag or (type(n.tag) == "string" and n.tag:find("coupler", 1, true) and n.tag) if t and n.cid then obj:detachCoupler(n.cid, 0) end end if beamstate.detachCouplers then beamstate.detachCouplers(nil, true) end'
+function M.couple(on)
+  local player = rawget(_G, 'getPlayerVehicle') and getPlayerVehicle(0)
+  if not player then setStatus('NRails: no vehicle'); return 0 end
+  local pp = player:getPosition()
+  local pid = player.getID and player:getID()
+  local n = 0
+  local function tell(v)
+    if pcall(function() v:queueLuaCommand(on and M.COUPLE_CMD or M.UNCOUPLE_CMD) end) then n = n + 1 end
+  end
+  tell(player)
+  if be and be.getObjectCount then
+    for i = 0, be:getObjectCount() - 1 do
+      local v = be:getObject(i)
+      local ok, jb = pcall(function() return v:getJBeamFilename() end)
+      if ok and M.RAIL_VEHICLES[jb] and not (pid and v.getID and v:getID() == pid) then
+        local q = v:getPosition()
+        if (q.x - pp.x) ^ 2 + (q.y - pp.y) ^ 2 <= M.COUPLE_M ^ 2 then tell(v) end
+      end
+    end
+  end
+  if M.ui then M.ui.onCouple(on, n) end
+  setStatus(on and string.format('NRails: attelage / coupling (%d vehicule(s))', n)
+    or string.format('NRails: detelage / uncoupling (%d vehicule(s))', n))
+  return n
 end
 
 -- Collision for the trains the player is not driving (collisionfoci.lua gives every other vehicle a collision island:
@@ -337,7 +508,7 @@ end
 -- not with the buildings' facades) and the buildings' collision after the roads' and the rails' (+2e5).
 function M.priority(e, k)
   local w = e.what or ''
-  if w:sub(1, 4) == 'rail' and k >= 1e6 then return k - 1e6 + 1e5 end
+  if w:sub(1, 5) == 'nrail' and k >= 1e6 then return k - 1e6 + 1e5 end
   if w == 'bldcol' then return k + 2e5 end
   return k
 end
@@ -345,44 +516,73 @@ end
 -- Each frame (roads.ext.update): the level crossings' slabs, the load guard (nrailsload.lua).
 local loadguard = require('beamngEarth/nrailsload')
 M.loadguard = loadguard
--- The keys' help (Ctrl+Shift+I or the window's Keys button): a small window listing NRails' keys, shown / hidden
--- like a train mod's help.
+-- The keys' help (Ctrl+Shift+I, the window's Keys button, and by itself when boarding a train unless "do not show
+-- again" is ticked), the turnout diagram (Ctrl+Shift+M: shown until pressed again), the signals and the coupling
+-- assistant: nrailsui.lua.
 M.KEYS = {
   { 'Ctrl+Shift+I', 'cette aide / this help' },
   { 'Ctrl+Shift+U', 'fenetre BeamNG.Earth / the window' },
   { 'Ctrl+Shift+T', 'sur le rail le plus proche / snap to rail' },
+  { 'Ctrl+Shift+T (x2)', 'encore : la voie voisine suivante / next track' },
   { 'Ctrl+Shift+G', 'recharger la zone / reload area' },
   { 'Ctrl+Shift+Left', 'prochain aiguillage a gauche / next turnout left' },
   { 'Ctrl+Shift+Up', 'prochain aiguillage tout droit / next turnout straight' },
   { 'Ctrl+Shift+Right', 'prochain aiguillage a droite / next turnout right' },
+  { 'Ctrl+Shift+M', 'schema des voies on / off (clic : aiguillage, itineraire)' },
+  { 'Ctrl+Shift+O', 'atteler (approcher a moins de 2 m) / couple' },
+  { 'Ctrl+Shift+N', 'deteler / uncouple' },
 }
 M.helpOn = false
 function M.toggleHelp() M.helpOn = not M.helpOn; return M.helpOn end
 
-local helpPtr = nil
-function M.drawHelp()
-  if not M.helpOn then return end
-  local im = rawget(_G, 'ui_imgui')
-  if not im then return end
-  helpPtr = helpPtr or im.BoolPtr(true)
-  helpPtr[0] = true
-  if im.Begin('NRails - touches / keys##nrailshelp', helpPtr, im.WindowFlags_AlwaysAutoResize) then
-    for _, k in ipairs(M.KEYS) do
-      im.TextUnformatted(k[1]); im.SameLine(150); im.TextUnformatted(k[2])
-    end
-  end
-  im.End()
-  if not helpPtr[0] then M.helpOn = false end
+M._roads = roads
+function M._setStatus(s) setStatus(s) end
+local ui = require('beamngEarth/nrailsui')
+M.ui = ui
+ui.init(M)
+function M.drawHelp() return ui.drawHelp() end
+function M.toggleSchema() return ui.toggleSchema() end
+function M.drawSchema(now) return ui.drawSchema(now) end
+
+-- Pure: the flat x, y list mapped into a diagram (the node at 0.35 of its width; nrailsui.xy).
+function M.schemaXY(flat, at, dir, scale, w, h, every)
+  return ui.xy(flat, at, dir, scale, w, h, 0.35, every)
+end
+
+-- A teleport's first block comes provisional (server make_provisional: the DEM's ground, no road grading, no rail
+-- corridor: the terrain over the rails) and is swapped for the graded one (terrain_refresh) 15-60 s later on a fresh
+-- place. core.lua (NRails hooks) tells us; a rail vehicle setting off meanwhile is held by the load guard (the user's
+-- runs 2026-10-25 / 26: "reapparition de ce terrain apres teleportation"), PROVISIONAL_MAX_S at most.
+M.PROVISIONAL_MAX_S = 90
+M.provisional, M.provisionalAt = false, nil
+function M.setProvisional(on)
+  M.provisional = on == true
+  M.provisionalAt = M.provisional and os.clock() or nil
+end
+function M.provisionalHolds(now)
+  if not M.provisional then return false end
+  now = now or os.clock()
+  if M.provisionalAt and now - M.provisionalAt > M.PROVISIONAL_MAX_S then return false end
+  local veh = rawget(_G, 'getPlayerVehicle') and getPlayerVehicle(0)
+  if not veh then return false end
+  local ok, jb = pcall(function() return veh:getJBeamFilename() end)
+  return ok and M.isRailVehicle(jb) or false
 end
 
 function M.update()
   M.updateRailCrossings()
   pcall(M.updateSwitches)
+  pcall(ui.update)
   pcall(M.drawHelp)
+  pcall(M.drawSchema)
   if not M.anchor then return end
+  local holdRail = M.provisionalHolds()
   pcall(loadguard.update, nil, {
     anchor = M.anchor,
-    ready = function(aid, x, y, r) return roads.readyAround(aid, x, y, r) end,
+    ready = function(aid, x, y, r)
+      if holdRail then return false end         -- (a train on a teleport's provisional block: wait for the graded)
+      return roads.readyAround(aid, x, y, r)
+    end,
     busy = function()
       local lp = package.loaded['beamngEarth/loadprogress']
       if lp and lp.active and lp.active() then return true end

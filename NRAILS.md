@@ -1,7 +1,7 @@
 # BeamNG.NRails — BeamNG.Earth + real-world railways
 
 A fork of [BeamNG.Earth](https://github.com/TecnaGamer/BeamNG.Earth) (MIT, © TecnaGamer; currently on
-**1.6.1-beta**) that keeps its roads, buildings and terrain and adds the real rail network (Overture Maps /
+**1.6.3-beta**) that keeps its roads, buildings and terrain and adds the real rail network (Overture Maps /
 OpenStreetMap) as **physically drivable track** for rail mods (TEM2, WLD FS30-2, tanker wagon, DMM512…) on the same
 1:1 streamed map.
 
@@ -20,9 +20,11 @@ The fork installs as `mods\unpacked\beamng_earthnrails` and turns the upstream `
 |---|---|
 | **Ctrl+Shift+I** | the keys' help on / off (also the window's *Keys* button) |
 | **Ctrl+Shift+U** | the BeamNG.Earth window (its *Snap to rail*, *Reload area* and *Keys* buttons) |
-| **Ctrl+Shift+T** | snap to rail: the current vehicle on the nearest track |
+| **Ctrl+Shift+T** | snap to rail: the current vehicle on the nearest track; again within 6 s: the next one (`snapPick`) |
 | **Ctrl+Shift+G** | reload area: the server asked for the whole area again |
 | **Ctrl+Shift+← / ↑ / →** | the next facing turnout ahead (600 m): left / straight (its default) / right |
+| **Ctrl+Shift+M** | turnout diagram: off / the next turnout / the area round it (`drawSchema`) |
+| **Ctrl+Shift+O** / **N** | couple / uncouple the rail vehicles within 80 m (`couple`) |
 
 (Options → Controls → Bindings → Gameplay → *BeamNG.NRails: …* to change them.)
 
@@ -162,6 +164,69 @@ solid for cars only while no rail vehicle is near.
 | WLD FS30-2 | 4.86 / 5.98 m | 1.56 m | 0.180 m |
 | TEM2 | 4.43 / 4.71 m | 1.56 m | 0.155 m |
 | Tanker wagon | 4.23 m | 1.49 m | 0.180 m |
+
+
+### 1.1.0-beta
+
+* **Turnouts** (`nrails.switches`, rewritten): `find` takes the arms round each node (up to `DETECT_M` 250 m), the
+  trunk (the arm most opposite the fan) and the default route (`rail_priority`: a named line first, then through,
+  then the straightest); the zone is where the routes' centre lines are within `SPLIT_M` 1.9 m (up to
+  `ZONE_MAX_M`); `find_diamonds` for crossings over 5 degrees. A tile's track pieces get their zone keys
+  (`zone_keys`: overlapping zones of a ladder) and one shape per key; the mod's `needMet` makes each shape solid
+  when every turnout of its key is set its way (`railsw_shapes`).
+* **Memory**: `lines_of` cached per feature, `_window` crops a line to the box searched, `_seg_cross` and
+  `_dist_to_line` chunked (`SEG_CHUNK`, `DIST_CELLS`): bounded whatever a line's length (it was quadratic in it:
+  +20 GB a minute into a map). `build\memguard.py` runs a dev script with a memory cap.
+* **Mod**: `nrailsswitch.step` (every rail vehicle sets a trailing turnout; facing for the player only; a turnout
+  with a vehicle in its zone locked), `scene()` (one vehicle scan every 0.2 s), `drawSchema`, `snapPick`,
+  `couple`, `setProvisional` / `provisionalHolds` (core.lua hooks).
+* **Server**: `grade._trim_ends` (the rail bed's ground-run ends off the roads under a bridge), `hooks
+  .rail_corridor_cached` (earthd hook: the provisional block's corridor from cached profiles only), the crossing
+  slabs clipped against the other tracks (`_side_free`).
+
+### On BeamNG.Earth 1.6.3 (NRails 1.2.0-beta)
+
+* **Upstream's own railways off** (`hooks.upstream_rails_off`, run when `nrails.hooks` is imported: grading.py and
+  roads.py import it first thing, in every server process): `BNE_RAIL_GRADE=0` (1.6.3's ground graded to its bed,
+  read when grading.py loads) and an import hook (`sys.meta_path`) that empties `railways.tile_mesh` (its colliding 3D
+  track), `railways.grade_plans` and `rails.tile_chunks` (its drawn track and street track) as the modules load: none
+  of it computed. `BNGE_RAILS=off`: upstream's railways as they come. Upstream's tests of them
+  (`test_railways`, `test_rails`) are run with `BNGE_RAILS=off`.
+* **Names of NRails' own**: 1.6.3 has a `rail` tile kind (made and colliding by roads.lua itself), `rail_<aid>_<tx>_
+  <ty>.cdae` shape files and `bne_rail_*` materials. NRails' kinds are `nrail`, `nrail2`.., `nrailcol`.., `nrailx`,
+  `nrailtun`, `nrailswN`, their files `nrail*_<aid>_<tx>_<ty>[_k].cdae`, its materials `bne_nrail_*`
+  (`rails.materials.json`). The tile fields (`rail_lines`, `railsw`, `railsw_shapes`, `railx_pts`) are unchanged.
+* **The revisit cache** (1.6.3's `revisit.py`: built tiles and blocks kept on disk, keyed by a hash of `server/*.py`
+  and the `BNE_*` settings): its key gets `hooks.code_salt()` (a hook line in `code_key`): `server/nrails/*.py` and
+  the `BNGE_*` settings.
+* **Bridge solver** (1.6.3 makes a cell's ground lines once, `_cell_entries`): `hooks.load_rail_entries` puts the
+  tracks among them. **Deck crossings**: `hooks.deck_crossings` on `required` before 1.6.3's clearance check.
+* From 1.6.3's `railways.py` (mpsteppe's PR #287): `rails.rail_ranges` (inner tunnels under `SHORT_TUNNEL_M` 60 m
+  open), `rails.rail_ground_parts` (the same for nrails.decks), `rails.rail_gone` (`is_abandoned` from 1.6.3's
+  `rail_flags`; not `is_disused`), `rails._drop_stubs` (`MIN_LINE_M` 50 m).
+
+
+### Driver aids, signals (NRails 1.1.0)
+
+* **Turnout zones** (`switches.SPLIT_M` 3.0 m): a route's zone (its rails in their own shape, solid only when set)
+  runs until the routes' centre lines are 3 m apart: the other route's rails are then ~2.2 m off the train's axis,
+  clear of its body (bogie frames, a snowplow), not only of its wheels. Zone shapes past the mod's 48 per tile go
+  into the always-solid collision (`Mesh.extend`).
+* **Signals** (`rails._signals`, `BNGE_RAIL_SIGNALS`): a drawn-only mast `SIGNAL_BACK_M` 40 m back along each
+  turnout's trunk, `SIGNAL_SIDE_M` 2.6 m off the track on the side with no other track within 3.4 m; its lamp's
+  place in `data["railsig"]`. The mod lights it (`nrailsui.drawSignals`, debugDrawer) from
+  `nrailsswitch.aspect`: red a vehicle in the zone, green the main route set, yellow another.
+* **Track diagram** (`nrailsui.lua`, Ctrl+Shift+M on / off, prefs in `settings/beamngEarth/nrails_prefs.json`):
+  area view round the train (zoom 150-1000 m) or the next facing turnout (found when stopped too, from the way the
+  train faces). A click on a branch: `nrailsswitch.choose` (the plan: set whenever nothing else sets the turnout
+  and no vehicle is in its zone). A click on a track: an itinerary (`nrailsroute.lua`: the tiles' `rail_lines`
+  sampled every 5 m, ends linked within 2.5 m, Dijkstra on directed edges never turning more than 75 degrees; the
+  route of each turnout on the way: the one whose zone end the way passes), cleared on arrival (30 m).
+* **Keys window** on boarding a rail vehicle unless `hideKeys`; **coupling assistant** (`couplingGap`: the gap to
+  the nearest rail vehicle from their spawn boxes; the rail mods' `couplerRadius` is 2 m; auto-coupling is armed
+  60 s by beamstate).
+* **Hub**: `nrails_version()` (NRAILS_VERSION) beside BeamNG.Earth's `VERSION` in the title, the header and the
+  mod line; the signals setting.
 
 ## Known limits
 

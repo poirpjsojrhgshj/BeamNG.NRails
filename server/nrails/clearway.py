@@ -105,7 +105,7 @@ def clear_piers(piers, lines):
     """The road bridges' piers (roads.pier_sites' / bridgetypes' tuples (x, y, ux, uy, z_top, z_bottom, width
     [, thick])) without those standing in a track's room at its level: their footprint (a wall across the deck as
     roadmesh._pier draws it, or a truss's anchor pier) within PIER_CLEAR_M of a track's centre line (the LGV under an
-    overpass by Frethun: a pier between its two tracks, the user's run 2026-10-25). Returns (kept, dropped count)."""
+    overpass near a tunnel portal: a pier between its two tracks, the user's run 2026-10-25). Returns (kept, dropped count)."""
     if not piers or not lines:
         return list(piers or ()), 0
     import roadmesh

@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 import unittest
@@ -36,6 +37,81 @@ class FindTest(unittest.TestCase):
         b = ("b", "standard_gauge", np.array([[-200.0, 4.5], [200.0, 4.5]]), [])
         c = ("c", "standard_gauge", np.array([[0.0, -100.0], [0.0, 100.0]]), [])
         self.assertEqual(switches.find(switches.lines_of([a, b, c]), (-100, -100, 100, 100)), [])
+
+    def test_the_main_line_by_default_and_the_trunk(self):
+        """The named line (the main line, dark on OSM) is the default even where it is the diverging one; the trunk
+        (the track behind the node) is found."""
+        main = ("yard", "standard_gauge", np.array([[0.0, 0.0], [200.0, 0.0]]), [])
+        trunk = ("line", "standard_gauge", np.array([[-200.0, 0.0], [0.0, 0.0]]), [])
+        br = ("line2", "standard_gauge", np.array([[0.0, 0.0], [20.0, 1.0], [40.0, 3.2], [60.0, 4.5],
+                                                   [200.0, 4.5]]), [])
+        lines = switches.lines_of([main, trunk, br])
+        sw = switches.find(lines, (-100, -100, 100, 100), {"line2": 1.0, "line": 1.0})[0]
+        self.assertEqual(sw.routes[sw.default].fid, "line2")
+        self.assertIsNotNone(sw.trunk)
+        self.assertLess(float(sw.trunk[-1, 0]), -100.0)          # the trunk runs back along the line
+        self.assertGreater(float(np.hypot(*np.diff(sw.routes[0].arm, axis=0).T).sum()), 150.0)
+
+    def test_short_zones_end_where_the_gauges_part(self):
+        main, br = turnout()
+        sw = switches.find(switches.lines_of([main, br]), (-100, -100, 100, 100))[0]
+        for r in sw.routes:
+            other = [o for o in sw.routes if o is not r][0]
+            d_end = switches._dist_to_line(r.xy[-1:], other.arm)[0]
+            self.assertGreaterEqual(d_end, switches.SPLIT_M - 0.3)
+            self.assertLess(d_end, switches.SPLIT_M + 1.0)
+
+    def test_a_ladder_overlapping_zones(self):
+        """Two turnouts 10 m apart on one track: the track's samples in both zones form a shape of their own, solid
+        only with both turnouts set to the through route."""
+        a = ("a", "standard_gauge", np.array([[-200.0, 0.0], [200.0, 0.0]]), [])
+        b1 = ("b1", "standard_gauge", np.array([[0.0, 0.0], [20.0, -1.0], [40.0, -3.2], [60.0, -4.5],
+                                                [200.0, -4.5]]), [])
+        b2 = ("b2", "standard_gauge", np.array([[10.0, 0.0], [30.0, 1.0], [50.0, 3.2], [70.0, 4.5],
+                                                [200.0, 4.5]]), [])
+        lines = switches.lines_of([a, b1, b2])
+        sws = switches.find(lines, (-100, -100, 100, 100))
+        self.assertEqual(len(sws), 2)
+        keys = switches.zone_keys(lines["a"], "a", sws)
+        both = [k for k in keys if len(k) == 2]
+        self.assertTrue(both, "samples of the main track in both zones")
+        whats = {k: f"railsw{n + 1}" for n, k in enumerate(sorted(set(k for k in keys if k)))}
+        rows = switches.shape_rows(sws, whats)
+        two = [r for r in rows if len(r["need"]) == 2]
+        self.assertTrue(two and {n[0] for n in two[0]["need"]} == {sws[0].id, sws[1].id})
+
+    def test_a_diamond_crossing(self):
+        """Two tracks crossing at 30 deg: a diamond, each track a route whose zone covers where the gauges overlap;
+        no diamond where a branch leaves at a node (a turnout)."""
+        a = ("a", "standard_gauge", np.array([[-200.0, 0.0], [200.0, 0.0]]), [])
+        c = math.cos(math.radians(30)), math.sin(math.radians(30))
+        b = ("b", "standard_gauge", np.array([[-200.0 * c[0], -200.0 * c[1]], [200.0 * c[0], 200.0 * c[1]]]), [])
+        lines = switches.lines_of([a, b])
+        ds = switches.find_diamonds(lines, (-100, -100, 100, 100), {"a": 1.0})
+        self.assertEqual(len(ds), 1)
+        d = ds[0]
+        self.assertEqual(d.kind, "diamond")
+        self.assertEqual(d.routes[d.default].fid, "a")
+        for r in d.routes:
+            L = float(np.hypot(*np.diff(r.xy, axis=0).T).sum())
+            self.assertTrue(4.0 < L < 20.0, L)                   # ~ 2 x 1.9 / sin 30 + a sample
+        main, br = turnout()
+        self.assertEqual(switches.find_diamonds(switches.lines_of([main, br]), (-100, -100, 100, 100)), [])
+
+    def test_long_lines_stay_small(self):
+        """Two 40 km lines crossing (20 000 samples each): the diamond search looks at the stretch round the box
+        only, in chunks (it once paired every segment of one with every segment of the other: tens of GB, the
+        user's PC frozen, 2026-10-26)."""
+        import time
+        n = 20000
+        a = np.c_[np.linspace(-20000.0, 20000.0, n), np.zeros(n)]
+        b = np.c_[np.linspace(-20000.0, 20000.0, n) * 0.5, np.linspace(-20000.0, 20000.0, n)]
+        t0 = time.perf_counter()
+        ds = switches.find_diamonds({"a": a, "b": b}, (-128, -128, 128, 128))
+        self.assertLess(time.perf_counter() - t0, 3.0)
+        self.assertEqual(len(ds), 1)
+        p = switches._seg_cross(a, b)
+        self.assertEqual(len(p), 1)
 
     def test_same_in_every_tile(self):
         main, br = turnout()

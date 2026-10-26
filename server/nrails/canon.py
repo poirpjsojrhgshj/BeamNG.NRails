@@ -260,6 +260,25 @@ def profile_box(frame, box, cell_fn, elev):
     return prof, found, arcs
 
 
+def cached_box(frame, box):
+    """Are the profiles of every map cell profile_box reads for box already made (in memory or this run's disk
+    cache)? Never profiles anything. (nrails.hooks.rail_corridor_cached: a provisional block's corridor only then,
+    the block itself must come in seconds.)"""
+    import os
+    import mapcells
+    la, lo, _ = frame.enu_to_geodetic(np.array([box[0], box[2]]), np.array([box[1], box[3]]), 0.0)
+    la, lo = np.asarray(la, np.float64), np.asarray(lo, np.float64)
+    fk = frame_key(frame)
+    for k in mapcells.cells_for_bbox(float(la.min()), float(lo.min()), float(la.max()), float(lo.max())):
+        with _lock:
+            if (fk, str(k), "c") in _mem:
+                continue
+        path = _disk_path(frame, k)
+        if not path or not os.path.exists(path):
+            return False
+    return True
+
+
 def covered_box(frame, box):
     """The union of the boxes of the map cells profile_box reads for box (where its pieces are cut)."""
     import mapcells

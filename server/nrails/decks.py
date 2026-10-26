@@ -112,13 +112,13 @@ def load_rails(feats, frame, ground):
                 CONNS[fid] = frozenset(rails.feature_connectors(feats, i))
             continue
         c = str(cls[i]) if cls is not None else "standard_gauge"
-        if c not in RAIL_CLASSES:
+        if c not in RAIL_CLASSES or rails.rail_gone(feats, i):
             continue
         key = (str(feats.ids[i]), RAIL_KEY)
         if key in ground:
             continue
         ground[key] = []
-        for ring in roads.ground_parts(feats, i):
+        for ring in rails.rail_ground_parts(feats, i):     # (a short tunnel under a road bridge: open track)
             if len(ring) < 2:
                 continue
             e, n = mapgeom.enu_xy(feats, frame, ring)

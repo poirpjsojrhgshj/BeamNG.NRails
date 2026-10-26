@@ -59,6 +59,7 @@ TEXT = {
         "rails_on": "Générer les voies ferrées", "profile": "Profil de rail", "trams": "Voies de tramway (au ras de la rue)",
         "crossings": "Passages à niveau (dalles + rainures 45 mm)",
         "catenary": "Caténaire (poteaux + fils, voies normales et légères)",
+        "signals": "Signaux lumineux avant les aiguillages",
         "cant": "Dévers dans les courbes (max 150 mm)",
         "max_grade": "Pente max des voies (‰ : 12,5-25 ligne classique, 35 LGV, 60+ montagne)",
         "vehicles": "Véhicules ferroviaires en plus (noms jbeam, séparés par des virgules)",
@@ -94,6 +95,7 @@ TEXT = {
         "rails_on": "Generate railways", "profile": "Rail profile", "trams": "Tram tracks (flush with the street)",
         "crossings": "Level crossings (slabs + 45 mm flangeways)",
         "catenary": "Overhead line (masts + wires, standard gauge and light rail)",
+        "signals": "Light signals before the turnouts",
         "cant": "Cant in curves (150 mm max)",
         "max_grade": "Max track grade (per mille: 12.5-25 classic main line, 35 high speed, 60+ mountain)",
         "vehicles": "More rail vehicles (jbeam names, comma-separated)",
@@ -118,6 +120,15 @@ TEXT = {
 
 
 # --- helpers (no tkinter) ---------------------------------------------------------------------------------------
+
+def nrails_version():
+    """NRails' own version (NRAILS_VERSION), shown beside BeamNG.Earth's (install.version: VERSION)."""
+    try:
+        with open(os.path.join(ROOT, "NRAILS_VERSION"), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return "?"
+
 
 def load_settings():
     cfg = install.load_config()
@@ -146,6 +157,7 @@ def server_env(s):
     env["BNGE_RAIL_CROSSINGS"] = "on" if r.get("crossings", True) else "off"
     env["BNGE_RAIL_CATENARY"] = "on" if r.get("catenary", True) else "off"
     env["BNGE_RAIL_CANT"] = "on" if r.get("cant", True) else "off"
+    env["BNGE_RAIL_SIGNALS"] = "on" if r.get("signals", True) else "off"
     env["BNGE_RAIL_MAX_GRADE"] = str(r.get("max_grade", 35))
     if s.get("cache_dir"):
         env[paths.ENV] = s["cache_dir"]
@@ -307,7 +319,7 @@ class Hub(tk.Tk):
         super().__init__()
         self.s = load_settings()
         self.t = TEXT.get(self.s.get("lang", "fr"), TEXT["fr"])
-        self.title(f"BeamNG.NRails Hub — {install.version()}")
+        self.title(f"BeamNG.NRails {nrails_version()} Hub — BeamNG.Earth {install.version()}")
         self.geometry("980x680")
         self.minsize(820, 560)
         self.q = queue.Queue()
@@ -338,7 +350,8 @@ class Hub(tk.Tk):
     # ---- layout ----
     def _home(self):
         f = self.tabs["home"]
-        ttk.Label(f, text="BeamNG.Earth + Rails", style="Head.TLabel").pack(anchor="w")
+        ttk.Label(f, text=f"BeamNG.NRails {nrails_version()}  —  sur / on BeamNG.Earth {install.version()}",
+                  style="Head.TLabel").pack(anchor="w")
         grid = ttk.Frame(f)
         grid.pack(fill="x", pady=8)
         self.status = {}
@@ -410,6 +423,7 @@ class Hub(tk.Tk):
         self.v_cross = tk.BooleanVar(value=bool(r["crossings"]))
         self.v_cat = tk.BooleanVar(value=bool(r.get("catenary", True)))
         self.v_cant = tk.BooleanVar(value=bool(r.get("cant", True)))
+        self.v_sig = tk.BooleanVar(value=bool(r.get("signals", True)))
         self.v_grade = tk.StringVar(value=str(r.get("max_grade", 35)))
         self.v_vehicles = tk.StringVar(value=str(r.get("vehicles", "")))
         ttk.Checkbutton(f, text=self.t["rails_on"], variable=self.v_rails).grid(row=0, column=0, sticky="w", pady=4)
@@ -420,6 +434,7 @@ class Hub(tk.Tk):
         ttk.Checkbutton(f, text=self.t["crossings"], variable=self.v_cross).grid(row=3, column=0, sticky="w")
         ttk.Checkbutton(f, text=self.t["catenary"], variable=self.v_cat).grid(row=4, column=0, sticky="w", pady=4)
         ttk.Checkbutton(f, text=self.t["cant"], variable=self.v_cant).grid(row=5, column=0, sticky="w")
+        ttk.Checkbutton(f, text=self.t["signals"], variable=self.v_sig).grid(row=5, column=1, sticky="w")
         ttk.Label(f, text=self.t["max_grade"]).grid(row=6, column=0, sticky="w", pady=4)
         ttk.Spinbox(f, from_=5, to=80, increment=2.5, textvariable=self.v_grade, width=6).grid(row=6, column=1,
                                                                                                 sticky="w")
@@ -535,8 +550,8 @@ class Hub(tk.Tk):
         if ud:
             ms = install.mod_states(ud)
             word = lambda a: t["active"] if a is True else t["inactive"] if a is False else t["notinstalled"]  # noqa
-            st["mod"].set(f"NRails : {word(ms[install.MOD_NAME])}   |   BeamNG.Earth : "
-                          f"{word(ms[install.UPSTREAM_MOD_NAME])}")
+            st["mod"].set(f"BeamNG.NRails {nrails_version()} : {word(ms[install.MOD_NAME])}   |   "
+                          f"BeamNG.Earth {install.version()} (original) : {word(ms[install.UPSTREAM_MOD_NAME])}")
         cd = self.cache_dir()
         real = os.path.realpath(cd) if os.path.exists(cd) else cd
         st["cachepath"].set(cd + ("" if real == cd else f"  →  {real}"))
@@ -688,6 +703,7 @@ class Hub(tk.Tk):
         self.s["rails"] = {"enabled": bool(self.v_rails.get()), "profile": self.v_profile.get(),
                            "trams": bool(self.v_trams.get()), "crossings": bool(self.v_cross.get()),
                            "catenary": bool(self.v_cat.get()), "cant": bool(self.v_cant.get()),
+                           "signals": bool(self.v_sig.get()),
                            "max_grade": grade, "vehicles": ", ".join(names)}
         save_settings(self.s)
         try:

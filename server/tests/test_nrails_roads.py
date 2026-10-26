@@ -98,12 +98,61 @@ class GradeLimitTest(unittest.TestCase):
         self.assertGreater(gr, gm, "a street keeps more of the ground's shape")
 
 
+class MotorwayUnderTest(unittest.TestCase):
+    def test_motorway_never_dips_under_a_fixed_overpass_but_does_under_a_held_one(self):
+        """A trunk's or a link's bridge over a motorway (never raised, its deck read at the ground: a motorway by a test town) leaves
+        the motorway where it is; a local road's whose ramps frontage roads hold down (1.6.3's BR-381) makes it dip."""
+        from test_grading import FakeMD
+        from test_roads import FRAME
+        mway = [(-300, 0), (300, 0)]
+        bridge = [(0, -20), (0, 20)]
+        ramps = [[(0, -260), (0, -20)], [(0, 20), (0, 260)]]
+        frontage = [[(-150, -26), (150, -26)], [(-150, 26), (150, 26)]]
+
+        def motorway_z(bridge_cls):
+            f = features([mway, bridge] + ramps + frontage,
+                         ["motorway", bridge_cls, bridge_cls, bridge_cls, "residential", "residential"],
+                         flags=[(1, "is_bridge")])
+            g = grading.Grader(FRAME, FakeMD(f), lambda la, lo: np.full(np.shape(la), 10.0))
+            la, lo, _ = FRAME.enu_to_geodetic(np.array([0.0]), np.array([0.0]), 0.0)
+            return float(g.apply(la, lo, np.full(1, 10.0))[0])
+        self.assertAlmostEqual(motorway_z("trunk"), 10.0, delta=0.3, msg="a trunk's (or its link's) deck: the motorway stays")
+        self.assertLess(motorway_z("tertiary"), 10.0 - 0.6 * grading.UNDER_CLEAR_M, "held ramps: the motorway dips")
+
+
 class HooksTest(unittest.TestCase):
     def test_shape_files_name_the_track(self):
         names = roads.shape_files(1, 2, 3)
-        for what in ("rail", "rail2", "railcol", "railcol4", "railx", "railtun"):
+        for what in ("nrail", "nrail2", "nrailcol", "nrailcol4", "nrailx", "nrailtun", "nrailsw1"):
             self.assertIn(what, names)
         self.assertEqual(names["road"], "road_1_2_3.cdae", "upstream's kept")
+        # (BeamNG.Earth 1.6.3's own railway: its "rail" kind and file, never one of NRails')
+        self.assertEqual(names.get("rail"), "rail_1_2_3.cdae", "upstream's rail file kept")
+        ours = set(hooks.shape_files(1, 2, 3).values())
+        self.assertNotIn("rail_1_2_3.cdae", ours, "no NRails file named as upstream's")
+
+    def test_upstream_railways_off_while_nrails_on(self):
+        import railways
+        import rails as up_rails
+        self.assertIsNone(railways.tile_mesh(None, 0, 0, [], None), "1.6.3's 3D track not built")
+        self.assertEqual(up_rails.tile_chunks(None, 0, 0, []), [], "nor its drawn track / street track")
+        self.assertEqual(railways.grade_plans(None, [], (0, 0, 1, 1), None), [], "nor its ground grading")
+        self.assertEqual(os.environ.get("BNE_RAIL_GRADE"), "0")
+
+    def test_revisit_key_holds_nrails_code_and_settings(self):
+        import revisit
+        a = hooks.code_salt()
+        keep = os.environ.get("BNGE_RAIL_PROFILE")
+        try:
+            os.environ["BNGE_RAIL_PROFILE"] = "jis60" if keep != "jis60" else "uic54"
+            self.assertNotEqual(hooks.code_salt(), a, "another rail profile: other cached tiles")
+        finally:
+            if keep is None:
+                os.environ.pop("BNGE_RAIL_PROFILE", None)
+            else:
+                os.environ["BNGE_RAIL_PROFILE"] = keep
+        self.assertEqual(hooks.code_salt(), a)
+        self.assertTrue(revisit.code_key())
 
     def test_boot_gives_a_cache_dir_only_when_none_is_named(self):
         self.assertEqual(hooks.boot(["--cache-dir", "X"]), ["--cache-dir", "X"])

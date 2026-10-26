@@ -1,4 +1,6 @@
-# BeamNG.NRails — 1.0.1-beta
+# BeamNG.NRails — 1.1.0
+
+**For BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails).
 
 **Real-world railways you can drive, on the whole Earth, in BeamNG.drive.**
 
@@ -8,14 +10,14 @@ buildings, trees, sea, airports) and adds the **real rail network** (Overture Ma
 drivable track** for the community's rail mods: drive a locomotive from one real station to another, through the
 real tunnels, over the real viaducts, across the real level crossings.
 
-> **Beta.** This is the first public version. Main lines in the open are drivable from end to end; big stations,
-> yards, roads near the tracks and some tunnel mouths still have flaws (see *Known limits*). Reports are welcome
-> (*Issues* tab).
+> Main lines, junctions and stations are drivable; big yards and some tunnel mouths still have flaws
+> (see *Known limits*). Reports are welcome (*Issues* tab).
 
 ---
 
 ## Contents
 
+1. [What NRails adds to BeamNG.Earth](#what-nrails-adds-to-beamngearth)
 1. [What it builds](#what-it-builds)
 2. [Requirements](#requirements)
 3. [Rail mods (rolling stock)](#rail-mods-rolling-stock)
@@ -29,6 +31,21 @@ real tunnels, over the real viaducts, across the real level crossings.
 
 ---
 
+## What NRails adds to BeamNG.Earth
+
+| | BeamNG.Earth 1.6.3-beta alone | with BeamNG.NRails 1.1.0 |
+|---|---|---|
+| Railway track | a track to drive cars on (sleepers and ballast solid) | track for **rail mods**: only the rails collide, the wheels' flanges run free |
+| Turnouts | both routes solid: a train picks a route by chance | **only the set route solid**, set by the train, your keys, a click on the diagram or an itinerary |
+| Level crossings | the track stops at the road | **rails across**, slabs open for trains, solid for cars |
+| Tunnels | left out | **tunnels** with tubes and portals, long and undersea ones |
+| Viaducts, bridges | rail bridges on piers | viaducts with parapets; **road bridges at least 6 m over the rails**, no pier on a track |
+| Profile | smoothed ground, 2 % ramps | shared per-cell profiles (no steps between tiles), cant in curves, grade cap, corridor cut in the terrain |
+| Signals | — | **light signals** before the turnouts (green / yellow / red) |
+| Driving aids | — | **track diagram** with clickable turnouts and **itineraries**, **snap to rail**, coupling assistant, keys window |
+| Catenary, platforms | — | overhead line, platforms and footbridges kept off the track |
+| Loading | — | the game waits while the track ahead of a fast train is not loaded |
+
 ## What it builds
 
 Around you, as you move, next to BeamNG.Earth's roads (same streaming, same 256 m tiles):
@@ -41,7 +58,7 @@ Around you, as you move, next to BeamNG.Earth's roads (same streaming, same 256 
 | **Tunnels** | straight from portal to portal, concrete tubes, mouths cut into the hills; long and undersea tunnels (water physics off inside) |
 | **Level crossings** | slabs flush with the road, flangeways; solid for cars, open for trains |
 | **Road bridges over the track** | at least 6 m free over the rails (a thin slab where a deck would be too low), no pier on the track |
-| **Turnouts** | each route through a turnout has its own collision, only the set route is solid: the train follows the route you chose |
+| **Turnouts** | each route through a turnout has its own collision, only the set route is solid: the train follows the route you chose; light signals before them |
 | **Catenary** | masts and wires over electrified lines (drawn only) |
 | **Stations** | platforms at track level, footbridges and halls lifted over the tracks, street furniture kept off the track |
 | **Trams** | grooved rails flush with the street (drawn only) |
@@ -93,31 +110,42 @@ for it and far trains keep their collision).
 
 | Key | What |
 |---|---|
-| **Ctrl+Shift+I** | the list of NRails' keys on / off (also the *Keys* button) |
+| **Ctrl+Shift+I** | the list of NRails' keys on / off (it also opens when you board a train, unless you tick *do not show again*) |
 | **Ctrl+Shift+U** | the BeamNG.Earth window: *Teleport*, **Snap to rail**, **Reload area**, *Keys* |
-| **Ctrl+Shift+T** | **Snap to rail**: your vehicle on the nearest track (within 40 m), facing the way it faced |
+| **Ctrl+Shift+T** | **Snap to rail**: your vehicle on the nearest track (within 40 m), facing the way it faced; pressed again within 6 s: the next track beside it |
 | **Ctrl+Shift+G** | **Reload area**: asks the server for the whole area again (roads, rails, buildings that did not come) |
-| **Ctrl+Shift+← / ↑ / →** | the **next turnout** ahead of your train (up to 600 m): left / straight / right |
+| **Ctrl+Shift+← / ↑ / →** | the **next turnout** ahead of your train: left / straight (main line) / right |
+| **Ctrl+Shift+M** | the **track diagram** on / off (see below) |
+| **Ctrl+Shift+O** | **couple**: coupling armed 60 s on your vehicle and the rail vehicles within 80 m; drive gently until the couplers are within 2 m |
+| **Ctrl+Shift+N** | **uncouple** |
 
-Turnouts: one you take from a branch sets itself for you; one where the line divides ahead takes your choice,
-otherwise its straightest route. Keys can be changed in *Options → Controls → Bindings → Gameplay*
-(*BeamNG.NRails: …*). The rest of BeamNG.Earth's settings: pause menu → *Mods* → *BeamNG.Earth*.
+**The track diagram** shows the tracks round your train (or, in *turnout view*, the next turnout ahead): the set
+routes in green, your choices in yellow, your itinerary in blue, your train as a blue dot.
+* **Click a turnout's branch**: that turnout will be set to it as soon as no train is on it. Set as many as you like.
+* **Click a grey track**: an **itinerary** there along the rails (never reversing); every turnout on the way is set
+  for you, and the itinerary ends when you arrive. *Clear* forgets your choices and the itinerary.
+* *+ / -* zoom, *Area view / Turnout view*.
+
+**Signals**: a light 40 m before each turnout, for a train coming toward it: green, the main line is set; yellow, a
+diverging route; red, a vehicle is on the turnout. **Turnouts** you take from a branch set themselves for you.
+
+Keys can be changed in *Options → Controls → Bindings → Gameplay* (*BeamNG.NRails: …*). The rest of
+BeamNG.Earth's settings: pause menu → *Mods* → *BeamNG.Earth*.
 
 ## Settings
 
-Hub → **Rails** tab: rails on / off, rail profile, trams, level crossings, catenary, cant, maximum grade (‰), extra
-rail vehicles. Hub → **Cache**: folder, size cap, clean-up of temporary files (do one after an update). Hub →
+Hub → **Rails** tab: rails on / off (off: BeamNG.Earth's own railways), rail profile, trams, level crossings,
+catenary, cant, signals, maximum grade (‰), extra rail vehicles. Hub → **Cache**: folder, size cap, clean-up of temporary files (do one after an update). Hub →
 **Outils** (Tools): switch back to the original BeamNG.Earth, environment check.
 
 ## Known limits
 
 * Big stations and yards: tracks mapped very close together or meeting at odd heights can give small steps.
-* Turnouts are simplified: no moving blades, no frog geometry.
-* Roads near the railway: a road passing under a rail bridge can get lumps of terrain; some motorway junctions
-  are rough (BeamNG.Earth's road grading plus the railway's own).
-* Terrain under the track can come back after a teleport in some places (*Reload area* helps).
+* Turnouts are simplified: no moving blades, no frog geometry; the signals are lights only (no automatic braking).
+* Itineraries only use the tracks already loaded round you (about 1 km).
+* Coupling works with rail mods that have couplers (the tested ones do); the vehicles must touch (within 2 m).
 * Some tunnel mouths show untextured faces or terrain over twin tubes.
-* No AI trains, no signals, no station buildings of our own; subway lines are left out; trams have no collision.
+* No AI trains, no station buildings of our own; subway lines are left out; trams have no collision.
 * The track only exists where Overture Maps has a `rail` segment: a missing or wrongly classed line is missing.
 * Loading speed depends mostly on the cache drive (see *Requirements*).
 

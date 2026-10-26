@@ -375,11 +375,104 @@ class TestTurnoutsAndCrossings(unittest.TestCase):
             rails._platform(x, [o for o in xs if o is not x], vis, col, inner)
             P = np.concatenate(col.P)
             tops.append((P[:, 1].min(), P[:, 1].max(), P[:, 2].min()))
-        self.assertAlmostEqual(tops[1][0], 4.5 - 2.25)          # inner tracks: slab to half way, no ramp
-        self.assertAlmostEqual(tops[1][1], 4.5 + 2.25)
+        go = rails.GAUGE_M / 2 + rails.profile()[1]
+        # inner tracks: slab up to the neighbours' outer rail edges (X_SLAB_GAP_M off them), no ramp
+        self.assertAlmostEqual(tops[1][0], go + rails.X_SLAB_GAP_M, places=6)
+        self.assertAlmostEqual(tops[1][1], 9.0 - go - rails.X_SLAB_GAP_M, places=6)
         self.assertGreater(tops[1][2], 0.5 - rails.X_SLAB_DEPTH_M - 1e-6)
         self.assertLess(tops[0][0], -2.0)                      # the outer side of the first track: its ramp
         self.assertGreater(tops[3][1], 13.5 + 2.0)
+
+
+class TestFrom163(unittest.TestCase):
+    """What NRails took from BeamNG.Earth 1.6.3's railways.py: short inner tunnels open, abandoned lines and short
+    stubs left out."""
+
+    def test_short_inner_tunnel_open_but_end_tunnels_kept(self):
+        import roads
+        keep = roads.level_ranges, roads._feature_length_m
+        try:
+            roads._feature_length_m = lambda feats, i: 1000.0
+            roads.level_ranges = lambda feats, i: [(0.4, 0.43, "tunnel"), (0.6, 0.7, "tunnel"), (0.0, 0.02, "tunnel"),
+                                                   (0.8, 0.82, "bridge")]
+            got = rails.rail_ranges(None, 0)
+        finally:
+            roads.level_ranges, roads._feature_length_m = keep
+        self.assertNotIn((0.4, 0.43, "tunnel"), got, "30 m under a road bridge: open track")
+        self.assertIn((0.6, 0.7, "tunnel"), got, "a 100 m tunnel stays one")
+        self.assertIn((0.0, 0.02, "tunnel"), got, "a short tunnel at the segment's end: maybe part of a long one")
+        self.assertIn((0.8, 0.82, "bridge"), got)
+
+    def test_stubs_dropped_lines_kept(self):
+        line = (("a", "standard_gauge", np.array([[0.0, 0.0], [200.0, 0.0]]), []),
+                ("b", "standard_gauge", np.array([[200.0, 0.0], [230.0, 5.0]]), []))
+        stub = ("c", "standard_gauge", np.array([[500.0, 500.0], [512.0, 500.0]]), [])
+        short_pair = (("d", "standard_gauge", np.array([[0.0, 300.0], [20.0, 300.0]]), []),
+                      ("e", "standard_gauge", np.array([[20.0, 300.0], [40.0, 300.0]]), []))
+        got = [f[0] for f in rails._drop_stubs(list(line) + [stub] + list(short_pair))]
+        self.assertEqual(got, ["a", "b"], "12 m alone and 40 m in two pieces dropped; the 230 m line kept whole")
+
+    def test_viaduct_piers_off_the_roads_and_tracks_under_it(self):
+        c = np.array([[0.0, 0.0], [30.0, 0.0], [60.0, 0.0]])
+        road = (np.array([[0.0, -50.0], [0.0, 50.0]]), 3.5 + rails.PIER_ROAD_M)      # a road across under pier 0
+        track = (np.array([[60.0 + 3.0, -50.0], [60.0 + 3.0, 50.0]]), rails.PIER_TRACK_M)  # a track 3 m off pier 2
+        ok = rails._pier_clear(c, [road, track])
+        self.assertEqual(ok.tolist(), [False, True, False])
+        self.assertTrue(rails._pier_clear(c, []).all())
+
+    def test_signal_before_a_turnout_on_the_side_with_room(self):
+        class Sw:
+            id, kind = "200_0", "turnout"
+            trunk = np.array([[100.0, 0.0], [0.0, 0.0]])
+        pts = np.c_[np.linspace(0, 200, 101), np.zeros(101), np.full(101, 5.0)]
+        heavy = [(0, pts, np.zeros(101))]
+        vis = rails.Mesh((0.0, 0.0, 0.0))
+        rows = rails._signals(vis, [Sw()], heavy, [(pts[:, :2], 0)], (0, -50, 256, 50))
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertAlmostEqual(r["lamp"][2], 5.0 + rails.SIGNAL_H_M, places=2)
+        self.assertEqual(r["face"], [1.0, 0.0], "looked at by a train running toward the turnout")
+        self.assertAlmostEqual(r["lamp"][1], -rails.SIGNAL_SIDE_M, delta=0.01, msg="on its right")
+        self.assertFalse(vis.empty(), "a mast drawn")
+        # another track 4 m on the right: the left side
+        other = np.c_[np.linspace(0, 200, 101), np.full(101, -4.0)]
+        rows = rails._signals(rails.Mesh((0.0, 0.0, 0.0)), [Sw()], heavy, [(pts[:, :2], 0), (other, 1)],
+                              (0, -50, 256, 50))
+        self.assertAlmostEqual(rows[0]["lamp"][1], rails.SIGNAL_SIDE_M, delta=0.01)
+        # tracks both sides (a yard): none
+        third = np.c_[np.linspace(0, 200, 101), np.full(101, 4.0)]
+        self.assertEqual(rails._signals(rails.Mesh((0.0, 0.0, 0.0)), [Sw()], heavy,
+                                        [(pts[:, :2], 0), (other, 1), (third, 2)], (0, -50, 256, 50)), [])
+
+    def test_mesh_extend(self):
+        a, b = rails.Mesh((0.0, 0.0, 0.0)), rails.Mesh((0.0, 0.0, 0.0))
+        tri = (np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], float), [[0, 1, 2]], np.zeros((3, 2)))
+        a.add(*tri, 0)
+        b.add(*tri, 1)
+        b.add(*tri, 1)
+        a.extend(b)
+        P, T, _UV, _m, M = a.arrays()
+        self.assertEqual(len(P), 9)
+        self.assertEqual(T.tolist(), [[0, 1, 2], [3, 4, 5], [6, 7, 8]])
+        self.assertEqual(M.tolist(), [0, 1, 1])
+
+    def test_abandoned_by_its_flags(self):
+        class T:
+            def __init__(self, rows):
+                self.feature = [r[0] for r in rows]
+                self.start = [r[1] for r in rows]
+                self.end = [r[2] for r in rows]
+                self.value = [r[3] for r in rows]
+
+            def rows(self, i):
+                return [j for j, f in enumerate(self.feature) if f == i]
+
+        class F:
+            rules = {"flags": T([(0, 0.0, 0.9, "is_abandoned"), (1, 0.0, 1.0, "is_disused"), (2, 0.0, 0.2, "is_abandoned")])}
+        self.assertTrue(rails.rail_gone(F(), 0), "abandoned over most of it: no track")
+        self.assertFalse(rails.rail_gone(F(), 1), "disused: its rails are mostly still there")
+        self.assertFalse(rails.rail_gone(F(), 2), "a short abandoned stretch only")
+        self.assertFalse(rails.rail_gone(type("G", (), {"rules": {}})(), 0), "no flags (older map data)")
 
 
 if __name__ == "__main__":

@@ -144,6 +144,7 @@ M.OPAQUE = { 'road_asphalt_2lane', 'italy_cobblestone' }
 local function loadMaterials()
   if loadedMaterials then return end
   for _, f in ipairs(M.MATERIAL_FILES) do loadJsonMaterialsFile(f) end
+  for _, f in ipairs(require('beamngEarth/gasstations').MATERIAL_FILES) do loadJsonMaterialsFile(f) end   -- (pumps)
   for _, name in ipairs(M.OPAQUE) do
     local m = scenetree.findObject(name)
     if m then
@@ -248,7 +249,7 @@ local function dropTile(key)
   if t.walk then deleteQ[#deleteQ + 1] = t.walk end
   if t.road then deleteQ[#deleteQ + 1] = t.road end
   if t.deck then deleteQ[#deleteQ + 1] = t.deck end
-  for _, w in ipairs({ 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'walkcol', 'tunnel' }) do if t[w] then deleteQ[#deleteQ + 1] = t[w] end end
+  for _, w in ipairs({ 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'walkcol', 'tunnel', 'rail' }) do if t[w] then deleteQ[#deleteQ + 1] = t[w] end end
   for _, w in ipairs(M.EXT_KINDS) do if t[w] then deleteQ[#deleteQ + 1] = t[w] end end     -- NRails hook
   if t.wire then deleteQ[#deleteQ + 1] = t.wire end
   -- and its meshes not made yet (from KyzoFox's 1.5.4, PR #64): a tile sent again under the same key left its old
@@ -263,6 +264,7 @@ local function dropTile(key)
   parked, walkQ, held, createQ = purge(parked), purge(walkQ), purge(held), purge(createQ)
   if t.props then require('beamngEarth/trees').dropKey((key:gsub(':', ':p', 1))) end
   if t.park then require('beamngEarth/parking').dropKey(key) end
+  if t.fuel then require('beamngEarth/gasstations').dropKey(key) end
   tiles[key] = nil
 end
 
@@ -413,7 +415,7 @@ function M.onTile(msg, currentAnchor)
   end
   -- pooled shape files: the server's slot paths instead of the tile's own files
   local slots = {}
-  for _, what in ipairs(M.withExt({ 'road', 'deck', 'walk', 'walkcol', 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'wire', 'tunnel' })) do   -- NRails hook (withExt)
+  for _, what in ipairs(M.withExt({ 'road', 'deck', 'walk', 'walkcol', 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'wire', 'tunnel', 'rail' })) do   -- NRails hook (withExt)
     local sl = msgSlot(msg, what)
     if sl then
       if type(data[what]) == 'table' and type(data[what].pos) == 'table' then
@@ -441,6 +443,10 @@ function M.onTile(msg, currentAnchor)
     require('beamngEarth/parking').onRows(msg.anchorId, key, data.park)
     tiles[key].park = true
   end
+  if type(data.fuel) == 'table' and data.fuel[1] then      -- gas stations: pumps, refuel areas (gasstations.lua)
+    require('beamngEarth/gasstations').onRows(msg.anchorId, key, data.fuel)
+    tiles[key].fuel = true
+  end
   if type(data.wire) == 'table' and data.wire.shape and type(data.wire.pos) == 'table' then    -- pole wires
     walkQ[#walkQ + 1] = { key = key, walk = data.wire, what = 'wire', tile = tiles[key] }
   end
@@ -452,8 +458,8 @@ function M.onTile(msg, currentAnchor)
   -- a lean collision mesh ("bldcol", "walkcol": server cdae collision_only) makes the drawn ones render-only
   local lean = type(data.bldcol) == 'table' and data.bldcol.shape ~= nil
   local leanWalk = type(data.walkcol) == 'table' and data.walkcol.shape ~= nil
-  -- tunnels (server roadmesh.tunnel: tubes and portals) collide like the decks
-  for _, what in ipairs({ 'walk', 'deck', 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'walkcol', 'tunnel' }) do
+  -- tunnels (server roadmesh.tunnel: tubes and portals) and railway tracks (server railways.py) collide like the decks
+  for _, what in ipairs({ 'walk', 'deck', 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'walkcol', 'tunnel', 'rail' }) do
     local w = data[what]
     if type(w) == 'table' and w.shape and type(w.pos) == 'table' then
       local q = { key = key, walk = w, what = what, tile = tiles[key],
@@ -575,6 +581,9 @@ function M.onDrop(msg)
   sinceChange = stopwatch.new()
 end
 
+-- A gas station's colliding props were made (gasstations.lua): rebuilt with the roads' next collision rebuild.
+function M.markCollisionDirty() collisionDirty = true end
+
 -- Origin rebase (core.lua finishRebase): the shown tiles move into the new frame (p_new = R*p + t: their TSStatics
 -- turned by R, as farfield.transform) and stay as "ghosts" until the new anchor's tiles over them are made
 -- (ghostsCovered). Before (2026-10-17, forced rebase at Fells Point) every building, road mesh and sidewalk went at
@@ -585,7 +594,7 @@ M.GHOST_FAR_M = 960         -- ... and once farther from the player than this (t
 M.GHOST_FAR_WAIT_S = 2      -- ... from this long after the rebase on
 local ghostSince = nil      -- stopwatch since the last rebase that left ghosts
 
-local WHATS = { 'walk', 'road', 'deck', 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'walkcol', 'wire', 'tunnel' }
+local WHATS = { 'walk', 'road', 'deck', 'bld', 'bld2', 'bld3', 'bld4', 'bldcol', 'walkcol', 'wire', 'tunnel', 'rail' }
 
 function M.transform(xf, geodesy)
   local bx, by, bz, bw = xf:beamngQuat()

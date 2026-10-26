@@ -1,19 +1,60 @@
 # BeamNG.NRails — release notes
 
-## 1.0.1-beta — bug fixes
+## 1.1.0 — for BeamNG.Earth 1.6.3-beta
 
-- **Level crossings: the WLD FS30-2 passes.** The crossing slabs were a straight strip at the rail top of the
-  crossing's centre: on a curve or a grade their ends stood up to ~0.2 m over the rails, in the way of a WLD
-  FS30-2's snowplow (0.13 m over the rail top). They now follow the track, its curve and grade, never over the rails.
-- **Level crossings and turnouts: no ghost collision.** When a train came near, the crossing's solid inner slab
-  (or a turnout's other route) was replaced by a drawn-only one, but the old one's collision could stay up to 30 s
-  (its deletion counted as "far away", waiting for a lazy collision rebuild): the train hit a slab it could not see.
-  It is now deleted at once and the collision rebuilt within about a second; a fast train opens the crossings 15 s
-  ahead of it (at least 150 m).
-- **Turnouts on canted track.** A turnout's diverging route got its own cant while the straight one had none: the
-  set route's rails were twisted and a bogie could not take it. No cant through a turnout any more (none within 25 m
-  of its zone, eased back in over 25 m), as on real track.
-- Names: "NRails" / "BeamNG.NRails" everywhere in the project's own files (the Hub, the key names, the docs).
+**Works with BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails). Everything
+below is new since 1.0.0-beta.
+
+### BeamNG.Earth 1.6.3
+- Now based on **BeamNG.Earth 1.6.3-beta**, with all of its new things: places you have been load much faster the
+  next time, gas stations, traffic lights and sidewalks where the map has them, GPS routes downloaded ahead,
+  European speed limit signs, smoother junctions, short teleports as quick as long ones, and more. The map's road
+  data downloads again once after the update (the first place you visit takes a few minutes).
+- BeamNG.Earth 1.6.3 has railway track of its own. NRails keeps its own and switches BeamNG.Earth's off while
+  NRails' rails are on (two tracks one in the other otherwise, and the ground graded twice). Turn NRails' rails off
+  in the Hub and you get BeamNG.Earth's railways instead.
+
+### Turnouts
+- **Reworked from A to Z.** Each turnout knows the track it comes from, its routes and its main route (the busiest
+  line first, then the straightest). Only the set route is solid; ladders, crossovers and diamonds are handled;
+  every train sets a turnout it runs through from a branch; a turnout with a vehicle on it never changes.
+- **A track joining yours no longer hits your train**: the other route's rails stay out of the collision until they
+  are clear of the train's body (bogies, snowplows), not only of its wheels.
+  A train arriving on a branch sets its turnout even when it is already in it (a turnout whose part of the map
+  came late stayed on the other route before).
+- **Track diagram** (Ctrl+Shift+M, shown until you press it again, stopped too): the tracks and turnouts round your
+  train, the set routes green, your choices yellow, your itinerary blue.
+  - **Click a branch** to set that turnout (as soon as no train is on it): several turnouts can be set ahead.
+  - **Click a track** for an **itinerary**: the way there along the rails (never reversing) is found and every
+    turnout on it set for you.
+  - Buttons: area / turnout view, zoom, clear.
+- **Light signals** 40 m before the turnouts: green (main line), yellow (diverging route), red (a vehicle on the
+  turnout). Hub setting to turn them off.
+- Keys still work: Ctrl+Shift+← / ↑ / → for the next turnout ahead.
+
+### Driving
+- **Keys window** when you board a train (with *do not show again*); Ctrl+Shift+I shows it any time.
+- **Snap to rail** pressed again within 6 s: the next track beside.
+- **Coupling** (Ctrl+Shift+O / Ctrl+Shift+N, buttons in the keys window): coupling is armed for 60 s on your vehicle
+  and the rail vehicles within 80 m; drive gently until the couplers are within 2 m (the rail mods' coupler reach):
+  the status line shows the gap. Works whichever way the vehicles meet (two ends with the same coupler type, e.g. two
+  locomotives nose to nose, never coupled with the game's own auto-coupling).
+- **Level crossings**: the slabs follow the track (curves and grades) and stop short of the other tracks: the WLD
+  FS30-2's snowplow passes. No ghost collision when a train comes near.
+- No cant through turnouts (the set route was twisted).
+- A train waits for the finished ground after a teleport (the terrain came back over the rails).
+
+### World
+- **Fixed: tracks, roads and bridges missing** near stations: a road tile with a road bridge over a track failed as a
+  whole, and a tile's rails were lost when a viaduct's piers were placed.
+- **Fixed: +20 GB of RAM** a minute into a map (the turnout search): under 1 GB now.
+- Roads under rail bridges: no lumps of ballast on them any more. Viaduct piers no longer stand on a road or another
+  track under them.
+- Short "tunnels" under road bridges are open track; abandoned lines are left out (disused ones stay); bits of track
+  under 50 m on their own are left out.
+- Faster: one scan of the vehicles for turnouts, crossings and signals; turnouts found once per tile; the places
+  cache of BeamNG.Earth 1.6.3 knows NRails (a new version or other rail settings rebuild the tracks).
+- Hub: BeamNG.NRails and its version beside BeamNG.Earth's.
 
 ## 1.0.0-beta — first public version
 

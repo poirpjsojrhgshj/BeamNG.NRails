@@ -27,6 +27,8 @@ OWN = ("server/nrails/", "server/tests/test_nrails_", "mod/tests/test_nrails", "
        "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrails.lua",
        "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrailsload.lua",
        "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrailsswitch.lua",
+       "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrailsroute.lua",
+       "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrailsui.lua",
        "mod/beamng_earth/settings/inputmaps/keyboard_nrails.json",
        "mod/beamng_earth/lua/ge/extensions/core/input/actions/nrails.json",
        "mod/beamng_earth/core/input/actions/nrails.json",

@@ -26,15 +26,18 @@ roads.RELOAD_EVERY_S = 0
 -- the hooks: the kinds registered once, the materials file added once, roads.ext set
 do
   local n = 0
-  for _, w in ipairs(roads.EXT_KINDS) do if w == 'railcol' then n = n + 1 end end
+  for _, w in ipairs(roads.EXT_KINDS) do if w == 'nrailcol' then n = n + 1 end end
   nrails.init({})
   local m = 0
   for _, f in ipairs(roads.MATERIAL_FILES) do if f == nrails.MATERIAL_FILE then m = m + 1 end end
   local n2 = 0
-  for _, w in ipairs(roads.EXT_KINDS) do if w == 'railcol' then n2 = n2 + 1 end end
+  for _, w in ipairs(roads.EXT_KINDS) do if w == 'nrailcol' then n2 = n2 + 1 end end
   T.check(n == 1 and n2 == 1 and m == 1, 'init twice: kinds and materials registered once')
-  T.check(roads.ext and roads.ext.onTile and roads.ext.update and roads.ext.lean('railcol2')
-    and not roads.ext.lean('rail'), 'roads.ext hooks set')
+  local clash = false
+for _, w in ipairs(nrails.KINDS) do if w == 'rail' or w == 'tunnel' then clash = true end end
+T.check(not clash, 'no kind of upstream\'s own (1.6.3: "rail")')
+T.check(roads.ext and roads.ext.onTile and roads.ext.update and roads.ext.lean('nrailcol2')
+    and not roads.ext.lean('nrail'), 'roads.ext hooks set')
 end
 
 -- the track is drawn only, its rails collide through a collision detail, a rail tunnel's tube collides, and a level
@@ -43,58 +46,65 @@ do
   gov.allow, gov.tries = nil, 0
   nrails.RAILX_CHECK_S = 0
   local function at(shape) return string.format('{ shape = "/t/%s", pos = { 768, 768, 0 } }', shape) end
-  files['/t/r.json'] = '{ chunks = {}, rail = ' .. at('rail_2_3_3.cdae') .. ', rail2 = ' .. at('rail_2_3_3_2.cdae')
-    .. ', railcol = ' .. at('railcol_2_3_3.cdae') .. ', railx = ' .. at('railx_2_3_3.cdae')
-    .. ', railtun = ' .. at('railtun_2_3_3.cdae') .. ', railx_pts = { { 900, 900, 10 } } }'
+  files['/t/r.json'] = '{ chunks = {}, nrail = ' .. at('nrail_2_3_3.cdae') .. ', nrail2 = ' .. at('nrail_2_3_3_2.cdae')
+    .. ', nrailcol = ' .. at('nrailcol_2_3_3.cdae') .. ', nrailx = ' .. at('nrailx_2_3_3.cdae')
+    .. ', nrailtun = ' .. at('nrailtun_2_3_3.cdae') .. ', railx_pts = { { 900, 900, 10 } } }'
   roads.onTile({ anchorId = 2, key = '3_3', path = '/t/r.json', n = 0 }, 2)
   for _ = 1, 3 do roads.update(gov, 2) end
   local function byShape()
     local by, n = {}, 0
     for _, o in ipairs(statics()) do
-      if o.fields.shapeName:find('/t/rail') then by[o.fields.shapeName] = o; n = n + 1 end
+      if o.fields.shapeName:find('/t/nrail') then by[o.fields.shapeName] = o; n = n + 1 end
     end
     return by, n
   end
   local by, n = byShape()
   T.check(n == 5, 'rail tile: five meshes made')
-  T.check(by['/t/rail_2_3_3.cdae'] and by['/t/rail_2_3_3.cdae'].fields.collisionType == 'None', 'track drawn only')
-  T.check(by['/t/rail_2_3_3_2.cdae'] and by['/t/rail_2_3_3_2.cdae'].fields.collisionType == 'None', 'its second part too')
-  T.check(by['/t/railcol_2_3_3.cdae'] and by['/t/railcol_2_3_3.cdae'].fields.collisionType == 'Collision Mesh',
+  T.check(by['/t/nrail_2_3_3.cdae'] and by['/t/nrail_2_3_3.cdae'].fields.collisionType == 'None', 'track drawn only')
+  T.check(by['/t/nrail_2_3_3_2.cdae'] and by['/t/nrail_2_3_3_2.cdae'].fields.collisionType == 'None', 'its second part too')
+  T.check(by['/t/nrailcol_2_3_3.cdae'] and by['/t/nrailcol_2_3_3.cdae'].fields.collisionType == 'Collision Mesh',
     'rails collide through the collision detail')
-  T.check(by['/t/railtun_2_3_3.cdae'] and by['/t/railtun_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final',
+  T.check(by['/t/nrailtun_2_3_3.cdae'] and by['/t/nrailtun_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final',
     'a rail tunnel drawn and colliding')
-  T.check(by['/t/railx_2_3_3.cdae'] and by['/t/railx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final',
+  T.check(by['/t/nrailx_2_3_3.cdae'] and by['/t/nrailx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final',
     'crossing slab solid with no train near')
   local train = { getJBeamFilename = function() return 'tem2' end, getPosition = function() return vec3(950, 900, 10) end }
   be.getObjectCount = function() return 1 end
   be.getObject = function() return train end
+  nrails._resetScene()
   for _ = 1, 3 do roads.update(gov, 2) end
   by, n = byShape()
-  T.check(n == 5 and by['/t/railx_2_3_3.cdae'] and by['/t/railx_2_3_3.cdae'].fields.collisionType == 'None',
+  T.check(n == 5 and by['/t/nrailx_2_3_3.cdae'] and by['/t/nrailx_2_3_3.cdae'].fields.collisionType == 'None',
     'a TEM2 within RAILX_CLEAR_M: the slab made again, render-only')
   train.getPosition = function() return vec3(5000, 900, 10) end
+  nrails._resetScene()
   for _ = 1, 3 do roads.update(gov, 2) end
   by, n = byShape()
-  T.check(n == 5 and by['/t/railx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final', 'train gone: solid again')
+  T.check(n == 5 and by['/t/nrailx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final', 'train gone: solid again')
   -- a fast train 400 m off (30 m/s: 12 s): the slab render-only already, the old solid one gone at once (no ghost
   -- collision waiting for a far delete's rebuild), the rebuild urgent
   train.getPosition = function() return vec3(1300, 900, 10) end
+  nrails._resetScene()
   train.getVelocity = function() return vec3(-30, 0, 0) end
+  nrails._resetScene()
   nrails.updateRailCrossings()
   T.check(roads.urgentColliders(), 'a remade NRails mesh: the collision rebuild urgent')
   by, n = byShape()
-  T.check(n == 4 and not by['/t/railx_2_3_3.cdae'], 'the solid slab deleted at once, before its successor is made')
+  T.check(n == 4 and not by['/t/nrailx_2_3_3.cdae'], 'the solid slab deleted at once, before its successor is made')
   for _ = 1, 3 do roads.update(gov, 2) end
   by, n = byShape()
-  T.check(n == 5 and by['/t/railx_2_3_3.cdae'].fields.collisionType == 'None', 'a fast train 400 m off: render-only')
+  T.check(n == 5 and by['/t/nrailx_2_3_3.cdae'].fields.collisionType == 'None', 'a fast train 400 m off: render-only')
   train.getVelocity = nil
+  nrails._resetScene()
   train.getPosition = function() return vec3(5000, 900, 10) end
+  nrails._resetScene()
   for _ = 1, 3 do roads.update(gov, 2) end
   local car = { getJBeamFilename = function() return 'etk800' end, getPosition = function() return vec3(900, 900, 10) end }
   be.getObject = function() return car end
+  nrails._resetScene()
   for _ = 1, 3 do roads.update(gov, 2) end
   by = byShape()
-  T.check(by['/t/railx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final', 'a car on the crossing: stays solid')
+  T.check(by['/t/nrailx_2_3_3.cdae'].fields.collisionType == 'Visible Mesh Final', 'a car on the crossing: stays solid')
   roads.onDrop({ anchorId = 2, key = '3_3' })
   for _ = 1, 3 do roads.update(gov, 2) end
   local _, left = byShape()
@@ -170,8 +180,8 @@ end
 -- the order the meshes are made in: the colliders, the track drawn, the buildings' collision, the rest
 do
   local k = 50
-  T.check(nrails.priority({ what = 'railcol' }, k) == k, 'a rail collider as a road collider')
-  T.check(nrails.priority({ what = 'rail2', renderOnly = true }, k + 1e6) == k + 1e5, 'the track drawn before the rest')
+  T.check(nrails.priority({ what = 'nrailcol' }, k) == k, 'a rail collider as a road collider')
+  T.check(nrails.priority({ what = 'nrail2', renderOnly = true }, k + 1e6) == k + 1e5, 'the track drawn before the rest')
   T.check(nrails.priority({ what = 'bldcol' }, k) == k + 2e5, "the buildings' collision after the roads' and rails'")
   T.check(nrails.priority({ what = 'bld', renderOnly = true }, k + 1e6) == k + 1e6, 'the facades as upstream')
 end
@@ -249,28 +259,105 @@ do
   local sw = require('beamngEarth/nrailsswitch')
   sw.state, sw.pending = {}, nil
   -- a turnout at the origin, its routes leaving along +x: route 1 to the left (+y), route 2 straight (default)
-  local t = { id = 'a', at = { 0, 0 }, dir = { 1, 0 }, def = 1, routes = {
-    { what = 'railsw1', side = 0.08, line = { 0, 0, 20, 1, 40, 3.2 } },
-    { what = 'railsw2', side = 0.0, line = { 0, 0, 20, 0, 40, 0 } } } }
-  T.check(sw.current(t) == 2, 'turnout: the straight route at first')
-  local ch, used = sw.step({ t }, { x = -100, y = 0, vx = 20, vy = 0 })
-  T.check(next(ch) == nil and not used, 'turnout: nothing without a choice')
+  local t = { id = 'a', at = { 0, 0 }, dir = { 1, 0 }, def = 1, trunk = { 0, 0, -250, 0 }, routes = {
+    { what = 'nrailsw1', side = 0.08, line = { 0, 0, 20, 1 }, arm = { 0, 0, 20, 1, 40, 3.2, 60, 4.5, 250, 4.5 } },
+    { what = 'nrailsw2', side = 0.0, line = { 0, 0, 20, 0 }, arm = { 0, 0, 250, 0 } } } }
+  local function P(x, y, vx, vy) return { { x = x, y = y, vx = vx, vy = vy, player = true, rail = true } } end
+  T.check(sw.current(t) == 2, 'turnout: the main route at first')
+  local ch, used, nf = sw.step({ t }, P(-100, 0, 20, 0))
+  T.check(next(ch) == nil and not used and nf and nf.sw == t, 'turnout: nothing without a choice, the next one known')
   sw.pending = 'left'
-  ch, used = sw.step({ t }, { x = -100, y = 0, vx = 20, vy = 0 })
-  T.check(ch.a == 1 and used, 'turnout: the choice goes to the next one ahead')
+  ch, used = sw.step({ t }, P(-100, 0, 20, 0))
+  T.check(ch.a == 1 and used, 'turnout: the choice goes to the next one ahead on the trunk')
   sw.pending = 'left'
-  ch, used = sw.step({ t }, { x = -100, y = 0, vx = -20, vy = 0 })
+  ch, used = sw.step({ t }, P(-100, 0, -20, 0))
   T.check(next(ch) == nil and not used, 'turnout: not one behind the train')
+  ch, used = sw.step({ t }, P(-100, -4.5, 20, 0))
+  T.check(next(ch) == nil and not used, 'turnout: not a parallel track\'s turnout (the train not on its trunk)')
   sw.pending = nil
   sw.state.a = 2
-  ch = sw.step({ t }, { x = 38, y = 3.0, vx = -15, vy = -1 })
-  T.check(ch.a == 1, 'turnout: coming back on the left route sets it')
-  ch = sw.step({ t }, { x = 38, y = 0.1, vx = -15, vy = 0 })
+  ch = sw.step({ t }, P(150, 4.5, -25, 0))
+  T.check(ch.a == 1, 'turnout: a train coming back on the left route sets it, 150 m ahead')
+  ch = sw.step({ t }, P(150, 0.1, -25, 0))
   T.check(next(ch) == nil, 'turnout: coming back on the set route: no change')
+  local cars = P(150, 4.5, -25, 0)
+  cars[2] = { x = 10, y = 0.2, vx = 0, vy = 0, rail = true }
+  ch = sw.step({ t }, cars)
+  T.check(next(ch) == nil, 'turnout: a wagon in its zone: locked, never set under a train')
+  -- a train running in on route 1, already in the zone (its turnout's tile came late): set to its own route
+  do
+    local sw2 = { id = 'late', at = { 0, 0 }, dir = { 1, 0 }, def = 1, trunk = { 0, 0, -200, 0 },
+      routes = { { line = { 0, 0, 30, 0 }, arm = { 0, 0, 250, 0 } },
+                 { line = { 0, 0, 30, 3 }, arm = { 0, 0, 30, 3, 250, 40 } } } }
+    sw.state['late'] = 2
+    local car = { x = 20, y = 0, vx = -8, vy = 0, rail = true, player = true }
+    T.check(sw.conflict(sw2, { car }, 1) == false and sw.conflict(sw2, { car }, 2) == true,
+      'turnout conflict: a train in the zone on route 1 lets it be set to route 1, not to 2')
+    local ch2 = sw.step({ sw2 }, { car })
+    T.check(ch2['late'] == 1, 'turnout: trailing train already in the zone sets it to its route')
+    sw.state['late'] = nil
+  end
+  T.check(sw.needMet({ { 'a', 2 } }, { a = t }) and not sw.needMet({ { 'a', 1 } }, { a = t })
+    and not sw.needMet({ { 'a', 2 }, { 'b', 2 } }, { a = t, b = { def = 0 } }), 'turnout: shape needs (overlapping zones)')
   T.check(sw.pick(t, 'right') == 2 and sw.pick(t, 'straight') == 2 and sw.pick(t, 'left') == 1, 'turnout: picks')
   local _, list = sw.collect({ k1 = { railsw = { t } }, k2 = { railsw = { t } }, k3 = { railsw = { t }, ghost = true } })
   T.check(#list == 1, 'turnout: each once over the tiles')
   sw.state, sw.pending = {}, nil
+end
+
+-- The turnout diagram's mapping; Snap to rail's cycle over the tracks round the spot; coupling
+do
+  local q = nrails.schemaXY({ 10, 0, 0, 10 }, { 0, 0 }, { 1, 0 }, 2, 300, 170)
+  T.check(math.abs(q[1][1] - (105 + 20)) < 1e-9 and math.abs(q[1][2] - 85) < 1e-9 and q[2][2] < 85,
+    'schema: along the way the train runs, left up')
+  local tiles = roads.extTiles()
+  local saved = {}
+  for k, v in pairs(tiles) do saved[k] = v; tiles[k] = nil end
+  tiles['9_9'] = { railLines = { { 0, -50, 1, 0, 50, 1 }, { 4.5, -50, 1, 4.5, 50, 1 }, { 9, -50, 1, 9, 50, 1 },
+    { 0.5, -60, 1, 0.5, -40, 1 } } }
+  local list = nrails.nearestRails(1, 0, 1)
+  T.check(#list == 3 and list[1].x < 1 and list[2].x == 4.5 and list[3].x == 9, 'snap: three tracks, nearest first')
+  nrails._snapCycle = nil
+  local r1, i1, n1, c = nrails.snapPick({ x = 1, y = 0, z = 1 }, 100)
+  c.at, c.lx, c.ly = 100, r1.x, r1.y
+  nrails._snapCycle = c
+  local r2, i2 = nrails.snapPick({ x = r1.x, y = r1.y, z = 1 }, 101)
+  local r3 = nrails.snapPick({ x = r1.x, y = r1.y, z = 1 }, 101 + nrails.SNAP_CYCLE_S + 1)
+  T.check(i1 == 1 and n1 == 3 and i2 == 2 and r2.x == 4.5 and r3.x < 1, 'snap: pressed again: the next track; later: the nearest')
+  nrails._snapCycle = nil
+  tiles['9_9'] = nil
+  for k, v in pairs(saved) do tiles[k] = v end
+  local cmds = {}
+  local function V(id, jb, x) return { getID = function() return id end, getJBeamFilename = function() return jb end,
+    getPosition = function() return vec3(x, 0, 0) end, queueLuaCommand = function(_, s) cmds[#cmds + 1] = { id, s } end } end
+  local vs = { V(1, 'tem2', 0), V(2, 'tank', 30), V(3, 'tank', 500), V(4, 'etk800', 10) }
+  local old = rawget(_G, 'getPlayerVehicle')
+  _G.getPlayerVehicle = function() return vs[1] end
+  be.getObjectCount = function() return #vs end
+  be.getObject = function(_, i) return vs[i + 1] end
+  T.check(nrails.couple(true) == 2 and cmds[1][2]:find('activateAutoCoupling', 1, true) ~= nil,
+    'couple: the player and the rail vehicles within COUPLE_M')
+  cmds = {}
+  nrails.couple(false)
+  T.check(#cmds == 2 and cmds[1][2]:find('detachCouplers', 1, true) ~= nil, 'uncouple')
+  be.getObjectCount, be.getObject = nil, nil
+  _G.getPlayerVehicle = old
+end
+
+-- A teleport's provisional block: a rail vehicle held until the graded one, a car not, never longer than MAX_S
+do
+  local veh = { getJBeamFilename = function() return 'tem2' end }
+  local old = rawget(_G, 'getPlayerVehicle')
+  _G.getPlayerVehicle = function() return veh end
+  nrails.setProvisional(true)
+  T.check(nrails.provisionalHolds(nrails.provisionalAt + 1) == true, 'provisional: a train waits for the graded block')
+  T.check(nrails.provisionalHolds(nrails.provisionalAt + nrails.PROVISIONAL_MAX_S + 1) == false, 'provisional: not forever')
+  veh.getJBeamFilename = function() return 'etk800' end
+  T.check(nrails.provisionalHolds(nrails.provisionalAt + 1) == false, 'provisional: a car does not wait')
+  nrails.setProvisional(false)
+  veh.getJBeamFilename = function() return 'tem2' end
+  T.check(nrails.provisionalHolds() == false, 'provisional: the graded block in: no hold')
+  _G.getPlayerVehicle = old
 end
 
 -- Reload area: core.reconnect called, not more often than RELOAD_MIN_S; the loading line names the rails

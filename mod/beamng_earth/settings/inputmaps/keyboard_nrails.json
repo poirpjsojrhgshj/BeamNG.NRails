@@ -7,6 +7,9 @@
     {"control":"ctrl shift left", "action":"nrails_switchLeft"},
     {"control":"ctrl shift up", "action":"nrails_switchStraight"},
     {"control":"ctrl shift right", "action":"nrails_switchRight"},
-    {"control":"ctrl shift i", "action":"nrails_toggleHelp"}
+    {"control":"ctrl shift i", "action":"nrails_toggleHelp"},
+    {"control":"ctrl shift m", "action":"nrails_toggleSchema"},
+    {"control":"ctrl shift o", "action":"nrails_couple"},
+    {"control":"ctrl shift n", "action":"nrails_uncouple"}
   ]
 }

@@ -51,7 +51,7 @@ def cell_plans(grader, key):
         cp = canon.cell_profile(frame, key, cell_fn, grader.elev)
         prof = {fid: [(p, k) for p, k, _a in ps] for fid, ps in cp.parts.items()}
         found = cp.found
-        return _plans(prof, found, own, grading, rails)
+        return _plans(prof, found, own, grading, rails, _roads_round(frame, own, cell_fn, rails) if prof else ())
     near = (own[0] - rails.NEAR_M, own[1] - rails.NEAR_M, own[2] + rails.NEAR_M, own[3] + rails.NEAR_M)
     la, lo, _ = frame.enu_to_geodetic(np.array([near[0], near[2]]), np.array([near[1], near[3]]), 0.0)
     la, lo = np.asarray(la, np.float64), np.asarray(lo, np.float64)
@@ -71,10 +71,88 @@ def cell_plans(grader, key):
     found = []
     ground = rails.Ground(frame, grader.elev)
     prof = rails.profile_network(ground, segments, near, roads_near, found, None, structs, rails.rail_connectors(cells))
-    return _plans(prof, found, own, grading, rails)
+    return _plans(prof, found, own, grading, rails, roads_near or rails.road_lines(cells, frame, own))
 
 
-def _plans(prof, found, own, grading, rails):
+UNDER_GAP_M = 1.0           # m between the rail bed (RAIL_BED_HALF_M) and the carriageway of a road under its bridge
+
+
+def _roads_round(frame, own, cell_fn, rails):
+    """The ground roads round the cell's box (rails.road_lines) from the map cells there, or () without any."""
+    import mapcells
+    la, lo, _ = frame.enu_to_geodetic(np.array([own[0] - 50.0, own[2] + 50.0]), np.array([own[1] - 50.0, own[3] + 50.0]),
+                                      0.0)
+    la, lo = np.asarray(la, np.float64), np.asarray(lo, np.float64)
+    cells = [cell_fn(k) for k in mapcells.cells_for_bbox(float(la.min()), float(lo.min()), float(la.max()),
+                                                         float(lo.max()))]
+    try:
+        return rails.road_lines([c for c in cells if c is not None], frame, own)
+    except Exception:       # noqa: BLE001 - no roads known: the bed as before
+        return ()
+
+
+def _dist_line(p, q):
+    a, b = q[:-1], q[1:]
+    ab = b - a
+    L2 = np.maximum((ab * ab).sum(1), 1e-12)
+    t = np.clip(((p[:, None, :] - a[None]) * ab[None]).sum(-1) / L2[None], 0.0, 1.0)
+    return np.hypot(*(p[:, None, :] - (a[None] + t[..., None] * ab[None])).transpose(2, 0, 1)).min(1)
+
+
+def _under(bridge_xy, roads):
+    """The roads [(xy, half)] crossing the polyline bridge_xy (k, 2): those passing under the track's bridge."""
+    out = []
+    if len(bridge_xy) < 2:
+        return out
+    lo, hi = bridge_xy.min(0) - 2.0, bridge_xy.max(0) + 2.0
+    for _fid, xy, half in roads:
+        xy = np.asarray(xy, np.float64)
+        if len(xy) < 2 or xy[:, 0].max() < lo[0] or xy[:, 0].min() > hi[0] or xy[:, 1].max() < lo[1] \
+                or xy[:, 1].min() > hi[1]:
+            continue
+        sel = np.flatnonzero((xy[:, 0] >= lo[0] - 30) & (xy[:, 0] <= hi[0] + 30) & (xy[:, 1] >= lo[1] - 30)
+                             & (xy[:, 1] <= hi[1] + 30))
+        seg = xy[max(int(sel[0]) - 1, 0):int(sel[-1]) + 2] if len(sel) else xy
+        if len(seg) >= 2 and float(_dist_line(bridge_xy, seg).min()) < 1.5:     # (its line meets the bridge's)
+            out.append((seg, float(half)))
+    return out
+
+
+def _trim_ends(pts, kd, lo, hi, roads):
+    """A ground run lo..hi of a track, its ends next to a bridge pulled back off the carriageway of every road
+    passing under that bridge (by its half width + RAIL_BED_HALF_M + UNDER_GAP_M): the bed's level (the embankment,
+    metres over the road) no longer imposed on the road's edges under a bridge mapped shorter than the road is wide
+    (grade_points never lets a plan's own core yield: lumps of embankment on the street under a 7 m rail bridge, the
+    user's run 2026-10-25). Returns (lo, hi)."""
+    n = len(kd)
+    for end in (0, 1):
+        if end == 0 and not (lo > 0 and kd[lo - 1] == 1):
+            continue
+        if end == 1 and not (hi < n - 1 and kd[hi + 1] == 1):
+            continue
+        j = lo - 1 if end == 0 else hi + 1                  # the bridge's samples next to this end
+        k = j
+        while 0 <= k < n and kd[k] == 1:
+            k = k - 1 if end == 0 else k + 1
+        br = pts[k + 1:j + 1, :2] if end == 0 else pts[j:k, :2]
+        under = _under(np.asarray(br, np.float64), roads)
+        if not under:
+            continue
+        idx = np.arange(lo, hi + 1)
+        dmin = np.full(len(idx), np.inf)
+        for seg, half in under:
+            dmin = np.minimum(dmin, _dist_line(pts[idx, :2], seg) - half)
+        bad = dmin < RAIL_BED_HALF_M + UNDER_GAP_M
+        if end == 0:
+            while lo <= hi and bad[lo - idx[0]]:
+                lo += 1
+        else:
+            while hi >= lo and bad[hi - idx[0]]:
+                hi -= 1
+    return lo, hi
+
+
+def _plans(prof, found, own, grading, rails, roads=()):
     out = []
     for fid, parts in prof.items():
         for pts, kind in parts:
@@ -92,6 +170,10 @@ def _plans(prof, found, own, grading, rails):
                 # grading's own Grader._mouth_plans for the roads' tunnels)
                 k = max(1, int(round(MOUTH_M / rails.STEP_M)))
                 lo, hi = int(run[0]), int(run[-1])
+                if len(roads):
+                    lo, hi = _trim_ends(pts, kd, lo, hi, roads)
+                    if hi - lo < 1:
+                        continue
                 if lo > 0 and kd[lo - 1] == 2:
                     lo = max(0, lo - k)
                 if hi < len(kd) - 1 and kd[hi + 1] == 2:

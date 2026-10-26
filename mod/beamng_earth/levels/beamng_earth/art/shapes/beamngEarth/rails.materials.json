@@ -1,7 +1,7 @@
 {
-  "bne_rail_steel": {
-    "name": "bne_rail_steel",
-    "mapTo": "bne_rail_steel",
+  "bne_nrail_steel": {
+    "name": "bne_nrail_steel",
+    "mapTo": "bne_nrail_steel",
     "class": "Material",
     "version": 1.5,
     "persistentId": "3f0b8c52-6a1e-5d7b-9c84-1e2a7d40b101",
@@ -20,9 +20,9 @@
     "groundType": "METAL",
     "translucent": false
   },
-  "bne_rail_sleeper": {
-    "name": "bne_rail_sleeper",
-    "mapTo": "bne_rail_sleeper",
+  "bne_nrail_sleeper": {
+    "name": "bne_nrail_sleeper",
+    "mapTo": "bne_nrail_sleeper",
     "class": "Material",
     "version": 1.5,
     "persistentId": "8d1c27e4-0b39-5f62-a7d5-5c3e91f0b202",
@@ -42,9 +42,9 @@
     "groundType": "CONCRETE",
     "translucent": false
   },
-  "bne_rail_ballast": {
-    "name": "bne_rail_ballast",
-    "mapTo": "bne_rail_ballast",
+  "bne_nrail_ballast": {
+    "name": "bne_nrail_ballast",
+    "mapTo": "bne_nrail_ballast",
     "class": "Material",
     "version": 1.5,
     "persistentId": "c47e9a10-5f2d-5b88-8e61-2a9d03c4b303",

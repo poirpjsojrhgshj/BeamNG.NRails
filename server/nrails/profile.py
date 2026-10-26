@@ -25,12 +25,14 @@ def sigma_for(cls, default):
 
 
 def road_profile(z, raw, step, spec, smooth):
-    """The profile of a built road of spec.cls: z (upstream's, smoothed with SIGMA_M) taken again from raw with
-    the class's own smoothing, then held to the class's grade. smooth(z, step, sigma): grading.smooth_profile. Pure."""
-    if not ON or spec.cls not in CLASS_SIGMA_M and spec.cls not in CLASS_MAX_GRADE:
+    """The profile of a built road of spec.cls: z (upstream's) held to the class's grade. smooth(z, step, sigma):
+    grading.smooth_profile. Pure.
+    Since BeamNG.Earth 1.6.3 upstream smooths the motorways and trunks longer itself (SIGMA_MAJOR_M 40 m, after a
+    running median), and each road through its junctions (its plan's samples past its ends): z is no longer taken
+    again from raw with CLASS_SIGMA_M (that undid the junctions' smoothing: steps where the roads met), only its
+    grade limited (eased back to z at the ends: the junctions keep their heights)."""
+    if not ON or spec.cls not in CLASS_MAX_GRADE:
         return z
-    if spec.cls in CLASS_SIGMA_M:
-        z = smooth(raw, step, CLASS_SIGMA_M[spec.cls])
     if spec.cls in CLASS_MAX_GRADE:
         gl = grade_limit(z, step, CLASS_MAX_GRADE[spec.cls])
         if gl is not z:             # (the envelopes' corners rounded)
