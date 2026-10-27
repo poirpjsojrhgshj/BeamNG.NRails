@@ -22,10 +22,11 @@ import sys
 
 log = logging.getLogger("earthd.nrails")
 
-ANCHOR_TILE_FILES = ("tunnel", "nrail", "nrailcol", "nrailx", "nrailtun", "nrailsw")
+ANCHOR_TILE_FILES = ("tunnel", "nrail", "nrailcol", "nrailx", "nrailtun", "nrailsw", "nrailct")
 RAIL_PARTS_MAX = 4              # rails.PARTS_MAX (here: shape_files must stay light)
 RAILCOL_PARTS_MAX = 12          # rails.COL_PARTS_MAX
-RAILSW_MAX = 48                 # rails.SW_SHAPES_MAX
+RAILSW_MAX = 160                # rails.SW_SHAPES_MAX
+RAILCT_MAX = 64                 # rails.CT_SHAPES_MAX
 _FAILS = set()
 
 
@@ -540,7 +541,18 @@ def shape_files(aid, tx, ty):
         out[f"nrailcol{k}"] = f"nrailcol_{aid}_{tx}_{ty}_{k}.cdae"
     for k in range(1, RAILSW_MAX + 1):
         out[f"nrailsw{k}"] = f"nrailsw_{aid}_{tx}_{ty}_{k}.cdae"
+    for k in range(1, RAILCT_MAX + 1):
+        out[f"nrailct{k}"] = f"nrailct_{aid}_{tx}_{ty}_{k}.cdae"
     return out
+
+
+def on_message(daemon, msg):
+    """earthd's dispatch: the mod's "nrails_*" messages (nrails.osmmsg)."""
+    try:
+        from nrails import osmmsg
+        osmmsg.on_message(daemon, msg)
+    except Exception as e:      # noqa: BLE001
+        _once(f"message {msg.get('type')}", e)
 
 
 def write_extras(extras, data, boxes, out_dir, vfs_dir, aid, tx, ty):
@@ -565,6 +577,10 @@ def write_extras(extras, data, boxes, out_dir, vfs_dir, aid, tx, ty):
             data["railsw_shapes"] = getattr(rail, "sw_need", [])
         if getattr(rail, "sig_rows", None):  # the turnouts' signals (the mod lights them)
             data["railsig"] = rail.sig_rows
+        if getattr(rail, "ct_rows", None):    # the contacts (rails.CONTACT_M): the mod switches them per train
+            data["railc"] = rail.ct_rows
+        if getattr(rail, "xbar_rows", None):  # the level crossings' barriers and lights (nrailsxing.lua)
+            data["railx_bars"] = rail.xbar_rows
         if rail.inner is not None and rail.xpts:
             data["railx_pts"] = rail.xpts     # the crossings' centres: nrails.lua drops the inner slabs' collision
             boxes.update(rail.boxes)          # near a rail vehicle (and holds them while the player is on one)

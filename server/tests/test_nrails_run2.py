@@ -246,7 +246,7 @@ class CanonCacheTest(unittest.TestCase):
     def test_a_crossing_from_the_disk_cache_as_lists_is_still_built(self):
         x = {"at": [1.0, 0.0], "t": [1.0, 0.0], "n": [0.0, 1.0], "z": 3.5, "z_road": 3.2, "half": 4.0}
         m = rails.Mesh((0, 0, 0))
-        rails._platform(x, [], m, rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0)))
+        rails._platform(x, [], rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0)), m)
         self.assertFalse(m.empty())
 
     def test_profile_box_joins_the_cells_samples_along_the_arc(self):

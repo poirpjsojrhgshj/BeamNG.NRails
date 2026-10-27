@@ -1,5 +1,53 @@
 # BeamNG.NRails — release notes
 
+## 1.2.0 — for BeamNG.Earth 1.6.3-beta
+
+**Works with BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails). Everything
+below is new since 1.1.0.
+
+### Level crossings
+- **Barriers where there are barriers in real life**: OpenStreetMap's level crossings tell what stands there (half
+  barriers, double half barriers, full barriers, red lights, or the St Andrew's cross alone). When a train comes, the
+  red lights flash, 7 s later the booms come down; they go up once the train has passed.
+- **Never in a train's way**: the whole crossing (the slabs between and beside the rails and the ramps, not only the
+  inner slab) is open for trains while one is near, and while you drive a train.
+- **A road vehicle on a closed crossing**: the signals before it show red (*carré*) and the driver is told; a vehicle
+  standing still on it for 40 s while a train comes is removed (never yours, never another player's).
+
+### Map (Rails tab)
+- **OpenStreetMap's railways, 100 km around you**, only those you can reach along the tracks from yours (main lines,
+  branches, sidings, light rail, each in its own colour), downloaded once per area and kept a month (a 100 km area is
+  a few requests to OpenStreetMap's Overpass service, never more than 60 a day, never while streaming).
+- **Itineraries that work far away**: right-click on any railway of the map, *itinéraire ferroviaire jusqu'ici*: the
+  route along the real network (never reversing at a junction) is drawn on the map, and the turnouts on its loaded
+  part are set for you, further as the track loads ahead.
+- The panel shows the download's progress and has a *Recharger OSM* button.
+
+### Driving
+- **Rail guidance, reworked**: a **strength slider** (keys window, 0 = no effect, 1 = the bogies stay on the rails).
+  Strong at low speed and lighter as the speed rises (1 / (1 + (v / 43 km/h)²)), damped from the wheels' own speed
+  across the track (the low-speed shaking of a TEM2 is gone), and from half strength up a **vertical hold** pulls a
+  wheel lifting off the rail back down.
+- **Speed regulator** (cruise control): Ctrl+Shift+K at the speed you are at, Ctrl+Shift+PageUp / PageDown ±5 km/h;
+  your brake disconnects it.
+- **Speed control after the French KVB**: the signals ahead on your track give a braking curve (*carré* or
+  *avertissement*: stop; RR30 / R30: 30 km/h; RR60: 60 km/h; an occupied level crossing: stop); over it: an alarm,
+  then the emergency brake. A small panel shows your speed, the regulator, the next restriction and the speed allowed.
+- **Train configurator** (Ctrl+Shift+J or the keys window's button): your consist (locomotives, cars, length, mass),
+  the predicted stopping distances (40 to 160 km/h and now; freight or passenger), the longest train allowed where you
+  are (indicative: 750 m freight in France, 740 m in the EU, 1,050 m in Russia, no limit in North America...) and an
+  **add behind** builder: pick a rail vehicle and a count, they are placed on the track behind your train and coupled.
+
+### World
+- **Fixed: track floating over a hollow** where a road passes under the line in a cutting wider than its mapped
+  bridge: such a gap (up to 80 m) is now a bridge, and every bridge has **abutments** down to the ground.
+- **Turnouts in big stations**: up to 160 turnout shapes per tile can be switched (48 before: past them the other
+  routes stayed solid and could catch a bogie).
+- **Only your track is solid where tracks touch**: in station throats, wherever another track comes within reach of a
+  bogie outside a turnout (tracks converging, crossing at a shallow angle, mapped very close), its rails are switched
+  off while your train runs on your track there (and kept solid while a train runs on them, so it works in
+  multiplayer).
+
 ## 1.1.0 — for BeamNG.Earth 1.6.3-beta
 
 **Works with BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails). Everything
@@ -28,11 +76,20 @@ below is new since 1.0.0-beta.
   - **Click a track** for an **itinerary**: the way there along the rails (never reversing) is found and every
     turnout on it set for you.
   - Buttons: area / turnout view, zoom, clear.
-- **Light signals** 40 m before the turnouts: green (main line), yellow (diverging route), red (a vehicle on the
-  turnout). Hub setting to turn them off.
+- **Light signals as on French lines (SNCF)**: a protection signal 40 m before each turnout (green: main line; two
+  yellow lights one over the other, *rappel de ralentissement* 30, flashing 60 on a gentle turnout: a diverging route;
+  two red lights, *carré*: a vehicle on the turnout), an advance signal 220 m before on open line (two yellow lights
+  side by side, *ralentissement* 30 / 60; one yellow, *avertissement*), and low shunting signals in yards (white /
+  violet). Hub setting to turn them off.
 - Keys still work: Ctrl+Shift+← / ↑ / → for the next turnout ahead.
 
 ### Driving
+- **Rail guidance** (Ctrl+Shift+B, or the keys window's button): the train's wheels held on the track, no swaying
+  from one rail to the other (the WLD FS30-2), no climbing the rail in curves. Off: the free physics as before.
+- **Railways on BeamNG.Earth's map**: a *Rails* button and the loaded tracks in orange; right-click on a track:
+  an itinerary there (every turnout set for you) or a teleport onto it; further away: the train heads that way and
+  the itinerary completes as the tracks load, or teleport there and be put on the rails.
+- **Level crossings never in a train's way**: while you drive a rail vehicle every crossing's inner slab is open.
 - **Keys window** when you board a train (with *do not show again*); Ctrl+Shift+I shows it any time.
 - **Snap to rail** pressed again within 6 s: the next track beside.
 - **Coupling** (Ctrl+Shift+O / Ctrl+Shift+N, buttons in the keys window): coupling is armed for 60 s on your vehicle
@@ -45,6 +102,8 @@ below is new since 1.0.0-beta.
 - A train waits for the finished ground after a teleport (the terrain came back over the rails).
 
 ### World
+- **Fixed: a tunnel inside a tunnel** on double-track lines (the two tracks' tunnel shared between two map tiles).
+- **Turnouts**: every other rail within 2.5 m of your path out of the collision while you pass.
 - **Fixed: tracks, roads and bridges missing** near stations: a road tile with a road bridge over a track failed as a
   whole, and a tile's rails were lost when a viaduct's piers were placed.
 - **Fixed: +20 GB of RAM** a minute into a map (the turnout search): under 1 GB now.

@@ -10,6 +10,11 @@
     {"control":"ctrl shift i", "action":"nrails_toggleHelp"},
     {"control":"ctrl shift m", "action":"nrails_toggleSchema"},
     {"control":"ctrl shift o", "action":"nrails_couple"},
-    {"control":"ctrl shift n", "action":"nrails_uncouple"}
+    {"control":"ctrl shift n", "action":"nrails_uncouple"},
+    {"control":"ctrl shift b", "action":"nrails_toggleGuide"},
+    {"control":"ctrl shift k", "action":"nrails_regToggle"},
+    {"control":"ctrl shift pageup", "action":"nrails_regUp"},
+    {"control":"ctrl shift pagedown", "action":"nrails_regDown"},
+    {"control":"ctrl shift j", "action":"nrails_config"}
   ]
 }

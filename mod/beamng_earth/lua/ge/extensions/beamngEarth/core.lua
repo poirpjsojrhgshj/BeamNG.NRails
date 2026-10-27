@@ -221,7 +221,7 @@ local function setStatus(text)
   log('I', 'beamngEarth', text)
 end
 
-M.nrails = require('beamngEarth/nrails').init({ setStatus = setStatus, anchor = function() return st and st.anchorId end })     -- NRails hook (the railway: nrails.lua)
+M.nrails = require('beamngEarth/nrails').init({ setStatus = setStatus, anchor = function() return st and st.anchorId end, geo = function() return st and st.anchor end })     -- NRails hook (the railway: nrails.lua)
 
 local function hypot(x, y) return math.sqrt(x * x + y * y) end
 
@@ -933,6 +933,7 @@ local function onMessage(msg)
       if lat and lon and not st.anchor then teleportTo(lat, lon, msg.name, 'start')
       elseif not st.anchor then defaultStart() end
     end
+  elseif type(t) == 'string' and t:sub(1, 7) == 'nrails_' and M.nrails and M.nrails.onMessage then M.nrails.onMessage(msg)   -- NRails hook
   elseif t == 'route_result' then
     if msg.id then routeResults[msg.id] = { points = msg.points or {}, dist = msg.dist, dur = msg.dur, error = msg.error } end
   elseif t == 'route_download' then

@@ -1,4 +1,4 @@
-# BeamNG.NRails — 1.1.0
+# BeamNG.NRails — 1.2.0
 
 **For BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails).
 
@@ -33,16 +33,16 @@ real tunnels, over the real viaducts, across the real level crossings.
 
 ## What NRails adds to BeamNG.Earth
 
-| | BeamNG.Earth 1.6.3-beta alone | with BeamNG.NRails 1.1.0 |
+| | BeamNG.Earth 1.6.3-beta alone | with BeamNG.NRails 1.2.0 |
 |---|---|---|
 | Railway track | a track to drive cars on (sleepers and ballast solid) | track for **rail mods**: only the rails collide, the wheels' flanges run free |
 | Turnouts | both routes solid: a train picks a route by chance | **only the set route solid**, set by the train, your keys, a click on the diagram or an itinerary |
-| Level crossings | the track stops at the road | **rails across**, slabs open for trains, solid for cars |
+| Level crossings | the track stops at the road | **rails across**, open for trains, solid for cars; **barriers and red lights where OpenStreetMap has them**, signals red and stuck cars removed when a vehicle blocks it |
 | Tunnels | left out | **tunnels** with tubes and portals, long and undersea ones |
 | Viaducts, bridges | rail bridges on piers | viaducts with parapets; **road bridges at least 6 m over the rails**, no pier on a track |
 | Profile | smoothed ground, 2 % ramps | shared per-cell profiles (no steps between tiles), cant in curves, grade cap, corridor cut in the terrain |
-| Signals | — | **light signals** before the turnouts (green / yellow / red) |
-| Driving aids | — | **track diagram** with clickable turnouts and **itineraries**, **snap to rail**, coupling assistant, keys window |
+| Signals | — | **light signals** as on French lines: protection and advance signals, *carré*, *ralentissement*, yard shunting signals |
+| Driving aids | — | **track diagram** with clickable turnouts and **itineraries**, **rail guidance** with a strength slider, **speed regulator**, **speed control** from the signals (after the French KVB), **train configurator** (length vs the local norm, stopping distances, add vehicles), **OpenStreetMap's railways on the map** (100 km, itineraries along them), **snap to rail**, coupling assistant, keys window |
 | Catenary, platforms | — | overhead line, platforms and footbridges kept off the track |
 | Loading | — | the game waits while the track ahead of a fast train is not loaded |
 
@@ -118,6 +118,10 @@ for it and far trains keep their collision).
 | **Ctrl+Shift+M** | the **track diagram** on / off (see below) |
 | **Ctrl+Shift+O** | **couple**: coupling armed 60 s on your vehicle and the rail vehicles within 80 m; drive gently until the couplers are within 2 m |
 | **Ctrl+Shift+N** | **uncouple** |
+| **Ctrl+Shift+B** | **rail guidance** on / off: the wheels held on the track (no swaying, no climbing the rail), or the free physics; its strength: the slider in the keys window |
+| **Ctrl+Shift+K** | **speed regulator** on / off at the speed you are at (your brake disconnects it) |
+| **Ctrl+Shift+PageUp / PageDown** | regulator ±5 km/h |
+| **Ctrl+Shift+J** | **train configurator**: consist, length vs the norm where you are, stopping distances, add vehicles behind |
 
 **The track diagram** shows the tracks round your train (or, in *turnout view*, the next turnout ahead): the set
 routes in green, your choices in yellow, your itinerary in blue, your train as a blue dot.
@@ -126,8 +130,15 @@ routes in green, your choices in yellow, your itinerary in blue, your train as a
   for you, and the itinerary ends when you arrive. *Clear* forgets your choices and the itinerary.
 * *+ / -* zoom, *Area view / Turnout view*.
 
-**Signals**: a light 40 m before each turnout, for a train coming toward it: green, the main line is set; yellow, a
-diverging route; red, a vehicle is on the turnout. **Turnouts** you take from a branch set themselves for you.
+**Signals** (as on French lines): 40 m before each turnout, green: the main line is set; two yellow lights one over
+the other: a diverging route (flashing: 60 km/h, steady: 30 km/h); two red lights (*carré*): a vehicle is on the
+turnout, stop. On open line an advance signal 220 m before: two yellow lights side by side (slow down for the
+turnout), one yellow (the turnout is taken). In yards, low shunting signals: white (go), violet (stop). **Turnouts**
+you take from a branch set themselves for you.
+
+**On BeamNG.Earth's map** (M): the *Rails* button shows the loaded tracks in orange. Right-click on a track: an
+**itinerary** there (the turnouts set for you) or **teleport onto the track**; further away: the train heads that
+way, or teleport there and be put on the rails once they load.
 
 Keys can be changed in *Options → Controls → Bindings → Gameplay* (*BeamNG.NRails: …*). The rest of
 BeamNG.Earth's settings: pause menu → *Mods* → *BeamNG.Earth*.
@@ -141,7 +152,10 @@ catenary, cant, signals, maximum grade (‰), extra rail vehicles. Hub → **Cac
 ## Known limits
 
 * Big stations and yards: tracks mapped very close together or meeting at odd heights can give small steps.
-* Turnouts are simplified: no moving blades, no frog geometry; the signals are lights only (no automatic braking).
+* Turnouts are simplified: no moving blades, no frog geometry.
+* Barriers and their lights are drawn by the game's debug drawer (no shadows, no collision); a crossing with no
+  OpenStreetMap node nearby shows the St Andrew's cross only.
+* The train length norms and the stopping distances of the configurator are indicative values.
 * Itineraries only use the tracks already loaded round you (about 1 km).
 * Coupling works with rail mods that have couplers (the tested ones do); the vehicles must touch (within 2 m).
 * Some tunnel mouths show untextured faces or terrain over twin tubes.

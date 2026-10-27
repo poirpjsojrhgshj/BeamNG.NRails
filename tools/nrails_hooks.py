@@ -24,6 +24,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MARK = "NRails hook"
 # the fork's own files (paths relative to ROOT, prefixes): not upstream's, free to change
 OWN = ("server/nrails/", "server/tests/test_nrails_", "mod/tests/test_nrails", "tools/", "build/", ".github/README.md",
+       "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrails",       # (nrails*.lua: every NRails game module)
+       "mod/beamng_earth/lua/vehicle/extensions/nrails",              # (the rail guidance's vehicle side)
+       "mod/beamng_earth/ui/ui-vue/mods/beamngEarth/NRails",          # (the map's railway parts)
+       "mod/beamng_earth/ui/ui-vue/mods/beamngEarth/nrailsMap",
        "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrails.lua",
        "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrailsload.lua",
        "mod/beamng_earth/lua/ge/extensions/beamngEarth/nrailsswitch.lua",

@@ -29,6 +29,47 @@ def outward_ok(mesh, inside_point):
     return float(((n * (V.mean(1) - inside_point)).sum(1) > 0).mean())
 
 
+class TestAutoBridges(unittest.TestCase):
+    """A hollow under the track (a road cutting wider than its mapped bridge) is bridged; a long one is not."""
+
+    def _line(self, n=201, z=5.0):
+        x = np.linspace(0, 200, n)
+        return np.c_[x, np.zeros(n), np.full(n, z)]
+
+    def test_short_hollow_is_bridged(self):
+        pts = self._line()
+        g = FlatGround(lambda x, y: np.where(np.abs(x - 100) < 10, -2.0, pts[0, 2] - 1.1))
+        kd = rails._auto_bridges(pts, np.zeros(len(pts)), g)
+        self.assertTrue((kd[(pts[:, 0] > 92) & (pts[:, 0] < 108)] == 1).all())
+        self.assertTrue((kd[(pts[:, 0] < 85) | (pts[:, 0] > 115)] == 0).all())
+
+    def test_long_hollow_and_flat_ground_untouched(self):
+        pts = self._line()
+        deep = FlatGround(lambda x, y: np.where(np.abs(x - 100) < 60, -2.0, pts[0, 2] - 1.1))
+        self.assertTrue((rails._auto_bridges(pts, np.zeros(len(pts)), deep) == 0).all())
+        flat = FlatGround(lambda x, y: np.full_like(x, pts[0, 2] - 1.1))
+        self.assertTrue((rails._auto_bridges(pts, np.zeros(len(pts)), flat) == 0).all())
+
+    def test_tunnels_kept_and_input_untouched(self):
+        pts = self._line()
+        kd = np.zeros(len(pts))
+        kd[90:111] = 2
+        g = FlatGround(lambda x, y: np.where(np.abs(x - 100) < 10, -2.0, pts[0, 2] - 1.1))
+        out = rails._auto_bridges(pts, kd, g)
+        self.assertTrue((out[90:111] == 2).all() and (kd[90:111] == 2).all())
+
+    def test_abutments_reach_the_ground(self):
+        pts = self._line(41)
+        nrm = np.tile([0.0, 1.0], (len(pts), 1))
+        mesh = rails.Mesh((0, 0, 0))
+        g = FlatGround(lambda x, y: np.full_like(x, -3.0))
+        rails._abutments(mesh, pts, nrm, -1.1, g, 10, 30)
+        P = np.concatenate(mesh.P)
+        self.assertAlmostEqual(P[:, 2].min(), -3.0 - rails.BRIDGE_PIER_FOOT_M, places=6)
+        self.assertAlmostEqual(P[:, 2].max(), 5.0 - 1.1, places=6)
+        self.assertEqual(len(np.concatenate(mesh.T)), 24)          # two boxes
+
+
 class TestHelpers(unittest.TestCase):
     def test_chaikin_keeps_ends_and_rounds(self):
         p = np.array([[0, 0], [100, 0], [100, 100]], float)
@@ -321,8 +362,12 @@ class TestTurnoutsAndCrossings(unittest.TestCase):
         vis, col, inner = rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0))
         rails._platform(x, [], vis, col, inner)
         P = np.concatenate(inner.P)
-        self.assertAlmostEqual(np.abs(P[:, 1]).max(), rails.GAUGE_M / 2 - rails.X_FLANGEWAY_M)
-        self.assertFalse(col.empty())
+        gi = rails.GAUGE_M / 2 - rails.X_FLANGEWAY_M
+        go = rails.GAUGE_M / 2 + rails.profile()[1]
+        lat = np.abs(P[:, 1])
+        self.assertFalse(((lat > gi + 1e-6) & (lat < go - 1e-6)).any(), "the flangeways and the rails left free")
+        self.assertGreater(lat.max(), go + rails.X_OUTER_M)       # the outer slabs and ramps: in the toggled shape too
+        self.assertTrue(col.empty() and vis.empty())              # (nothing always solid at a crossing)
 
     def test_crossing_slabs_follow_a_curved_climbing_track(self):
         """A crossing on a 250 m curve climbing at 1 %: the slabs follow the track, never over its rail top (the
@@ -340,15 +385,16 @@ class TestTurnoutsAndCrossings(unittest.TestCase):
         tr = rails._track_near([(track, np.zeros(len(track), np.int8))], x["at"], x["half"])
         self.assertIsNotNone(tr)
         rails._platform(x, [], vis, col, inner, tr)
-        for m in (col, inner):
+        for m in (inner,):
             P = np.concatenate(m.P)
             d = np.hypot(P[:, 0] - xy[:, None, 0], P[:, 1] - xy[:, None, 1])
             j = np.argmin(d, axis=0)                            # each vertex's nearest track sample
             self.assertLess((P[:, 2] - z[j]).max(), 0.02, "no slab over the rail top")
-        C = np.concatenate(col.P)
+        C = np.concatenate(inner.P)
         r = np.hypot(C[:, 0], C[:, 1] - R)                      # distance from the curve's centre
         lateral = np.abs(R - r)
-        self.assertGreater(lateral[C[:, 2] > z.min() - 0.05].min(), rails.GAUGE_M / 2, "outer slabs off the gauge")
+        gi, go = rails.GAUGE_M / 2 - rails.X_FLANGEWAY_M, rails.GAUGE_M / 2
+        self.assertFalse(((lateral > gi + 0.01) & (lateral < go)).any(), "slabs off the flangeways on the curve")
 
     def test_no_cant_at_a_turnouts_zone(self):
         """A canted curve with a turnout zone's points on it (the clear points): no cant within CANT_X_CLEAR_M of
@@ -373,7 +419,7 @@ class TestTurnoutsAndCrossings(unittest.TestCase):
         for x in xs:
             vis, col, inner = rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0)), rails.Mesh((0, 0, 0))
             rails._platform(x, [o for o in xs if o is not x], vis, col, inner)
-            P = np.concatenate(col.P)
+            P = np.concatenate(inner.P)
             tops.append((P[:, 1].min(), P[:, 1].max(), P[:, 2].min()))
         go = rails.GAUGE_M / 2 + rails.profile()[1]
         # inner tracks: slab up to the neighbours' outer rail edges (X_SLAB_GAP_M off them), no ramp
@@ -382,6 +428,58 @@ class TestTurnoutsAndCrossings(unittest.TestCase):
         self.assertGreater(tops[1][2], 0.5 - rails.X_SLAB_DEPTH_M - 1e-6)
         self.assertLess(tops[0][0], -2.0)                      # the outer side of the first track: its ramp
         self.assertGreater(tops[3][1], 13.5 + 2.0)
+
+
+class TestContacts(unittest.TestCase):
+    def test_other_dist_and_contact_line(self):
+        a = np.c_[np.linspace(0, 200, 101), np.zeros(101)]
+        b = np.c_[np.linspace(0, 200, 101), np.linspace(6, 0.5, 101)]      # converging to 0.5 m
+        rail = a + [0, 0.78]
+        d = rails.other_dist(rail, 0, [(a, 0), (b, 1)])
+        self.assertGreater(d[0], rails.CONTACT_M)       # (5.2 m from the rail at the start: no contact)
+        self.assertAlmostEqual(d[-1], 0.28, places=2)
+        self.assertTrue((rails.frog_mask(rail, 0, [(a, 0), (b, 1)]) == (d >= rails.GAUGE_M / 2 - rails.FROG_MARGIN_M)).all())
+        mask = d < rails.CONTACT_M
+        self.assertTrue(mask[-1] and not mask[0])
+        pts = np.c_[a, np.zeros(101)]
+        lines = rails.contact_line(pts, mask)
+        self.assertEqual(len(lines), 1)
+        xs = lines[0][0::2]
+        first = np.flatnonzero(mask)[0] * 2.0
+        self.assertAlmostEqual(min(xs), max(0.0, first - rails.CT_LINE_M), delta=6.1)
+        self.assertEqual(rails.contact_line(pts, np.zeros(101, bool)), [])
+
+
+class TestCrossingBar(unittest.TestCase):
+    def test_one_row_per_road_crossing_spanning_its_tracks(self):
+        xs = [{"at": np.array([0.0, 4.5 * i]), "z": 0.5, "z_road": 0.25, "t": np.array([1.0, 0.0]),
+               "rd": np.array([0.0, 1.0]), "hw": 3.5, "fid": f"f{i}", "road": "r"} for i in range(3)]
+        rows = [rails.crossing_bar(x, [o for o in xs if o is not x]) for x in xs]
+        self.assertEqual(sum(r is not None for r in rows), 1)
+        r = rows[0]
+        self.assertAlmostEqual(r["at"][1], 4.5)
+        self.assertLess(r["d0"], -4.5 - rails.GAUGE_M / 2)
+        self.assertGreater(r["d1"], 4.5 + rails.GAUGE_M / 2)
+        self.assertEqual(r["hw"], 3.5)
+        self.assertIsNone(rails.crossing_bar({k: v for k, v in xs[0].items() if k != "rd"}, []))
+
+
+class TestTwinTubeAcrossSeam(unittest.TestCase):
+    def test_one_twin_tube_whichever_tile(self):
+        """Two tracks 4.8 m apart in a tunnel, on either side of a tile seam (y = 0): each tile has its part of one
+        twin tube, never a lone track's tube (a tube in a tube)."""
+        x = np.arange(-40.0, 200.0, 2.0)
+        kd = np.where((x >= 0) & (x <= 160), 2, 0).astype(np.int8)
+        a = np.c_[x, np.full(len(x), -0.5), np.full(len(x), 10.0)]
+        b = np.c_[x, np.full(len(x), 4.3), np.full(len(x), 10.0)]
+        pm = {"A": [(a, kd)], "B": [(b, kd)]}
+        index = {"A": 0, "B": 1}
+        near = (-600.0, -600.0, 800.0, 800.0)
+        south = rails.tile_tubes(pm, index, near, (0.0, -256.0, 256.0, 0.0))
+        north = rails.tile_tubes(pm, index, near, (0.0, 0.0, 256.0, 256.0))
+        self.assertEqual(south, [], "the twin tube's centre line is north of the seam: nothing south")
+        self.assertEqual(len(north), 1)
+        self.assertGreater(north[0]["w"], rails.TUNNEL_TRACK_W + 4.0, "round both tracks")
 
 
 class TestFrom163(unittest.TestCase):
@@ -424,6 +522,7 @@ class TestFrom163(unittest.TestCase):
         class Sw:
             id, kind = "200_0", "turnout"
             trunk = np.array([[100.0, 0.0], [0.0, 0.0]])
+            routes = [type("R", (), {"prio": 1.0})(), type("R", (), {"prio": 0.0})()]
         pts = np.c_[np.linspace(0, 200, 101), np.zeros(101), np.full(101, 5.0)]
         heavy = [(0, pts, np.zeros(101))]
         vis = rails.Mesh((0.0, 0.0, 0.0))
@@ -443,6 +542,20 @@ class TestFrom163(unittest.TestCase):
         third = np.c_[np.linspace(0, 200, 101), np.full(101, 4.0)]
         self.assertEqual(rails._signals(rails.Mesh((0.0, 0.0, 0.0)), [Sw()], heavy,
                                         [(pts[:, :2], 0), (other, 1), (third, 2)], (0, -50, 256, 50)), [])
+        # a long trunk: the advance signal too; a yard's turnout: a low shunting signal only
+        class Long(Sw):
+            trunk = np.array([[400.0, 0.0], [0.0, 0.0]])
+        pts2 = np.c_[np.linspace(0, 400, 201), np.zeros(201), np.full(201, 5.0)]
+        rows = rails._signals(rails.Mesh((0.0, 0.0, 0.0)), [Long()], [(0, pts2, np.zeros(201))], [(pts2[:, :2], 0)],
+                              (0, -50, 512, 50))
+        self.assertEqual(sorted(r["kind"] for r in rows), ["adv", "main"])
+        self.assertAlmostEqual([r for r in rows if r["kind"] == "adv"][0]["lamp"][0], 400.0 - rails.SIGNAL_ADV_M, delta=0.5)
+        class Yard(Long):
+            routes = [type("R", (), {"prio": 0.0})(), type("R", (), {"prio": 0.0})()]
+        rows = rails._signals(rails.Mesh((0.0, 0.0, 0.0)), [Yard()], [(0, pts2, np.zeros(201))], [(pts2[:, :2], 0)],
+                              (0, -50, 512, 50))
+        self.assertEqual([(r["kind"], r["yard"]) for r in rows], [("main", True)])
+        self.assertAlmostEqual(rows[0]["lamp"][2], 5.0 + rails.SIGNAL_YARD_H_M, places=2)
 
     def test_mesh_extend(self):
         a, b = rails.Mesh((0.0, 0.0, 0.0)), rails.Mesh((0.0, 0.0, 0.0))

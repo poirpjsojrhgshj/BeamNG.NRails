@@ -209,6 +209,55 @@ function M.collect(tiles)
   return out, list
 end
 
+-- A diverging route taken at 60 km/h rather than 30: a gentle turnout (its route's arm less than FAST_DEG off the
+-- main route's over its first FAST_AT_M).
+M.FAST_DEG = 3.0
+M.FAST_AT_M = 60
+local function armDir(r)
+  local a = r and (r.arm or r.line)
+  if not a or #a < 4 then return nil end
+  local x0, y0 = a[1], a[2]
+  local bx, by = a[#a - 1], a[#a]
+  for i = 3, #a - 1, 2 do
+    if (a[i] - x0) ^ 2 + (a[i + 1] - y0) ^ 2 >= M.FAST_AT_M ^ 2 then bx, by = a[i], a[i + 1]; break end
+  end
+  local l = math.sqrt((bx - x0) ^ 2 + (by - y0) ^ 2)
+  if l < 1e-6 then return nil end
+  return (bx - x0) / l, (by - y0) / l
+end
+function M.fastDiverge(sw, idx)
+  local main = sw.routes and sw.routes[(sw.def or 0) + 1]
+  local ax, ay = armDir(sw.routes and sw.routes[idx])
+  local mx, my = armDir(main)
+  if not ax or not mx then return false end
+  local c = math.max(-1, math.min(1, ax * mx + ay * my))
+  return math.deg(math.acos(c)) < M.FAST_DEG
+end
+
+-- The lights a signal of the turnout shows (French railway's, SNCF; nrails.rails._signals places them): a list of
+-- { colour, across, up, flash } (across / up: the lamp's place on the target in lamp steps, flash: blinking).
+--   protection ("main"): green the main line set; RR30 / RR60 (two yellow one over the other, flashing at 60) a
+--     diverging route; carre (two red side by side) a vehicle on the turnout;
+--   advance ("adv"): green; ralentissement 30 / 60 (two yellow side by side, flashing at 60) a diverging route ahead;
+--     avertissement (one yellow) the turnout taken by a vehicle;
+--   a yard's ("yard"): white (shunting allowed), violet (carre violet) a vehicle on it.
+function M.lamps(sw, cars, kind, yard)
+  if not sw then return { { 'red', -1, 0 }, { 'red', 1, 0 } } end
+  local occ = occupied(sw, cars or {})
+  if yard then return { occ and { 'violet', 0, 0 } or { 'white', 0, 0 } } end
+  local cur = M.current(sw)
+  local main = cur == (sw.def or 0) + 1
+  local fast = not main and M.fastDiverge(sw, cur)
+  if kind == 'adv' then
+    if occ then return { { 'yellow', 0, 0 } } end
+    if main then return { { 'green', 0, 0 } } end
+    return { { 'yellow', -1, 0, fast }, { 'yellow', 1, 0, fast } }
+  end
+  if occ then return { { 'red', -1, 0 }, { 'red', 1, 0 } } end
+  if main then return { { 'green', 0, 0 } } end
+  return { { 'yellow', 0, 1, fast }, { 'yellow', 0, -1, fast } }
+end
+
 -- A signal's aspect for a train coming toward its turnout: 'red' (a vehicle in its zone but that train), 'green'
 -- (the main line set), 'yellow' (a diverging route set). Pure.
 function M.aspect(sw, cars, except)

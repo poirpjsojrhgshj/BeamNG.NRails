@@ -8,7 +8,7 @@ local N, roads, switch, route = nil, nil, nil, nil
 local function status(s) if N and N._setStatus then N._setStatus(s) end end
 
 M.PREFS_FILE = '/settings/beamngEarth/nrails_prefs.json'
-M.prefs = { hideKeys = false, schema = true, view = 'area', zoom = 350 }
+M.prefs = { hideKeys = false, schema = true, view = 'area', zoom = 350, guide = false, guideStrength = 0.6 }
 M.W, M.H = 340, 200
 M.ZOOMS = { 150, 250, 350, 600, 1000 }
 M.SCHEMA_ARM_M = 150
@@ -137,6 +137,24 @@ function M.drawHelp()
     if im.Button('Deteler / uncouple') then N.couple(false) end
     im.SameLine()
     if im.Button('Schema') then M.toggleSchema() end
+    im.SameLine()
+    if im.Button('Configurateur##nrcfgb') and N.toggleConfig then N.toggleConfig() end
+    im.SameLine()
+    local gOn = N.guide and N.guide.on
+    if im.Button(gOn and 'Guidage : on##nrguide' or 'Guidage : off##nrguide') then N.toggleGuide() end
+    if N.guide then
+      M.strPtr = M.strPtr or im.FloatPtr(N.guide.STRENGTH or 0.6)
+      im.PushItemWidth(260)
+      if im.SliderFloat('puissance du guidage / guidance strength##nrgs', M.strPtr, 0, 1, '%.2f') then
+        N.guide.setStrength(M.strPtr[0])
+      end
+      im.PopItemWidth()
+      if im.IsItemDeactivatedAfterEdit and im.IsItemDeactivatedAfterEdit() then
+        M.prefs.guideStrength = N.guide.STRENGTH
+        M.savePrefs()
+      end
+      im.TextUnformatted('  0 : sans effet / none  -  1 : bogies tenus sur les rails / held on the rails')
+    end
     if im.Checkbox('Ne plus afficher en montant dans un train / do not show when boarding', M.helpHide) then
       M.prefs.hideKeys = M.helpHide[0] == true
       M.savePrefs()
@@ -211,14 +229,21 @@ function M.setItinerary(p, wx, wy)
     status('NRails: pas d\'itineraire (demi-tour impossible ou voie non chargee) / no way there')
     return nil
   end
+  local n = M.planPath(path, wx, wy)
+  status(string.format('NRails: itineraire %d m, %d aiguillage(s) regle(s) / itinerary set', math.floor(route.length(path)), n))
+  return M.itin
+end
+
+-- The turnouts on a way (a list of points) set for it (switch.plan; the last itinerary's choices dropped first): the
+-- itinerary M.itin. Returns how many turnouts.
+function M.planPath(path, wx, wy)
   if M.itin then for id in pairs(M.itin.ids) do switch.plan[id] = nil end end
   local ch = route.choices(N._swList or {}, path)
   local n = 0
   local ids = {}
   for id, idx in pairs(ch) do switch.plan[id] = idx; ids[id] = true; n = n + 1 end
   M.itin = { path = path, tx = wx, ty = wy, ids = ids }
-  status(string.format('NRails: itineraire %d m, %d aiguillage(s) regle(s) / itinerary set', math.floor(route.length(path)), n))
-  return M.itin
+  return n
 end
 
 -- A click at diagram point (sx, sy): a turnout's branch chosen, else an itinerary to the track there. Pure but for
@@ -353,7 +378,10 @@ end
 
 -- ------------------------------------------------------------------------------------------------------- signals
 local sigCache = { at = -1, rows = {} }
-local ASPECT = { green = { 0.1, 1.0, 0.25 }, yellow = { 1.0, 0.8, 0.05 }, red = { 1.0, 0.08, 0.05 } }
+local ASPECT = { green = { 0.1, 1.0, 0.25 }, yellow = { 1.0, 0.8, 0.05 }, red = { 1.0, 0.08, 0.05 },
+  white = { 1.0, 1.0, 0.95 }, violet = { 0.62, 0.2, 1.0 } }
+M.LAMP_STEP_M = 0.16      -- m between two lamps on a target (side by side, one over the other)
+M.FLASH_S = 1.0           -- a flashing light's period (on half of it)
 function M.drawSignals(now)
   local dd = rawget(_G, 'debugDrawer')
   local CF = rawget(_G, 'ColorF')
@@ -373,14 +401,26 @@ function M.drawSignals(now)
     sigCache = { at = now, rows = rows }
   end
   local cars = N.scene and N.scene() or {}
+  local flashOn = (now % M.FLASH_S) < M.FLASH_S / 2
   for _, s in ipairs(sigCache.rows) do
-    local a = switch.aspect(N._swById[s.id], cars)
-    local c = ASPECT[a] or ASPECT.red
-    local pos = vec3(s.lamp[1], s.lamp[2], s.lamp[3])
-    pcall(function()
-      dd:drawSphere(pos, 0.17, CF(c[1], c[2], c[3], 1))
-      dd:drawSphere(pos, 0.42, CF(c[1], c[2], c[3], 0.22))
-    end)
+    local fx, fy = s.face and s.face[1] or 1, s.face and s.face[2] or 0
+    local ax, ay = -fy, fx                      -- (across the target)
+    local small = s.yard and 0.6 or 1.0
+    local lamps = switch.lamps(N._swById[s.id], cars, s.kind or 'main', s.yard)
+    if N.xing and N.xing.blocked(s.lamp[1], s.lamp[2], fx, fy) then   -- (a level crossing occupied ahead: carre)
+      lamps = { { 'red', -1, 0, false }, { 'red', 1, 0, false } }
+    end
+    for _, l in ipairs(lamps) do
+      if not l[4] or flashOn then
+        local c = ASPECT[l[1]] or ASPECT.red
+        local d = M.LAMP_STEP_M * small
+        local pos = vec3(s.lamp[1] + ax * l[2] * d, s.lamp[2] + ay * l[2] * d, s.lamp[3] + l[3] * d * 1.4)
+        pcall(function()
+          dd:drawSphere(pos, 0.075 * small, CF(c[1], c[2], c[3], 1))
+          dd:drawSphere(pos, 0.2 * small, CF(c[1], c[2], c[3], 0.2))
+        end)
+      end
+    end
   end
 end
 

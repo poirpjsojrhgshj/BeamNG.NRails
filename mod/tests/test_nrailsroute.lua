@@ -65,6 +65,22 @@ do
   T.check(SW.aspect(sw, {}) == 'green', 'signal: green, the main line set')
   SW.state.a = 1
   T.check(SW.aspect(sw, {}) == 'yellow', 'signal: yellow, a diverging route set')
+  -- the French-style lights (SNCF): carre, RR30 / RR60, ralentissement, avertissement, shunting
+  local function names(ls) local o = {} for _, l in ipairs(ls) do o[#o + 1] = l[1] .. l[2] .. l[3] .. (l[4] and 'f' or '') end return table.concat(o, ' ') end
+  SW.state.a = 2
+  T.check(names(SW.lamps(sw, {}, 'main')) == 'green00', 'lights: main line set: voie libre')
+  T.check(names(SW.lamps(sw, {}, 'adv')) == 'green00', 'lights: advance, main line: green')
+  SW.state.a = 1
+  T.check(names(SW.lamps(sw, {}, 'main')) == 'yellow01 yellow0-1', 'lights: diverging (steep): RR30, two yellow one over the other')
+  T.check(names(SW.lamps(sw, {}, 'adv')) == 'yellow-10 yellow10', 'lights: advance, diverging: R30, two yellow side by side')
+  T.check(names(SW.lamps(sw, cars, 'main')) == 'red-10 red10', 'lights: a vehicle on it: carre')
+  T.check(names(SW.lamps(sw, cars, 'adv')) == 'yellow00', 'lights: advance, turnout taken: avertissement')
+  T.check(names(SW.lamps(sw, {}, 'main', true)) == 'white00' and names(SW.lamps(sw, cars, 'main', true)) == 'violet00',
+    'lights: a yard: white, carre violet when taken')
+  local gentle = { id = 'g', at = { 0, 0 }, dir = { 1, 0 }, def = 1,
+    routes = { { line = { 0, 0, 40, 0.6 }, arm = { 0, 0, 60, 1.5, 200, 8 } }, { line = { 0, 0, 40, 0 }, arm = { 0, 0, 150, 0 } } } }
+  SW.state.g = 1
+  T.check(names(SW.lamps(gentle, {}, 'main')) == 'yellow01f yellow0-1f', 'lights: a gentle turnout: RR60, flashing')
   SW.plan, SW.state = {}, {}
   local _, _, nf = SW.step({ sw }, { { x = -100, y = 0, vx = 0, vy = 0, fx = 1, fy = 0, player = true, rail = true } })
   T.check(nf ~= nil and nf.sw == sw, 'diagram: a stopped train still sees the turnout it faces')

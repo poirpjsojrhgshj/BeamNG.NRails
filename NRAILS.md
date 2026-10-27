@@ -228,6 +228,51 @@ solid for cars only while no rail vehicle is near.
 * **Hub**: `nrails_version()` (NRAILS_VERSION) beside BeamNG.Earth's `VERSION` in the title, the header and the
   mod line; the signals setting.
 
+### 1.2.0
+
+* **Level crossings** (`nrailsxing.lua`; server `rails.crossing_bar` -> `railx_bars`): one row per road crossing
+  (centre on the road, the road's direction and half width, the tracks' span); OSM's `railway=level_crossing` node
+  within 30 m gives `crossing:barrier` / `crossing:light`; closing when a rail vehicle comes (350 m or 25 s ahead, its
+  line within 30 m) or stands on it; lights 7 s then booms 8 s; occupied -> `blocked()` turns the signals before it
+  red (`nrailsui.drawSignals`); a road vehicle not the player's nor a remote one, still 40 s inside: deleted. The
+  whole platform (outer slabs, ramps) is in the toggled `nrailx` shape (`_platform`).
+* **OSM railways** (`server/nrails/osmrail.py`, `osmmsg.py`; earthd hook `nrails_*` messages, core.lua hook back):
+  Overpass, 1-degree squares cached 30 days, one request at a time, 60 a day, 60 s pause on 429/504; graph by
+  shared node ids, reachable set from the player's track within 100 km, Douglas-Peucker 8 m; the file
+  `/temp/beamngEarth/nrails/osm_rails.json`; routes by Dijkstra over (node, came-from) states, no turn over 100 deg.
+  `nrailsmap.lua`: `osmLines` (zoom-thinned), `pick` on OSM lines, itinerary = OSM route + `setItinerary` to its
+  farthest loaded point, again every 5 s.
+* **Guidance v2** (`nrailsGuide.lua`): strength s: 0.4-4 Hz (s^2), cap 0.5-14 m/s2; stiffness x 1/(1+(v/12)^2) floored
+  0.2; damping from `obj:getNodeVelocityVector` (finite difference smoothed as a fallback); vertical hold from s 0.5
+  (lines sent as x, y, z).
+* **Driving aids** (`nrailsdrive.lua`, vehicle `nrailsDrive.lua`): regulator PI; KVB-like curve
+  v = sqrt(vt^2 + 2 x 0.6 x (d - 30)), alarm +5 km/h, emergency +10 km/h; restrictions from the signals on the
+  track ahead (`ahead`: the rows followed across seams, the straightest at a joint).
+* **Configurator** (Ctrl+Shift+J): consist by chained gaps, `core_vehicle_manager` masses, stopping distance
+  v (2 s + build-up + L/250) + v^2/2a (freight 0.45, passenger 0.8 m/s2), country by coarse outlines / boxes,
+  builder `core_vehicles.spawnNewVehicle` + `railSnapPose` along the track behind, then coupled.
+* **Auto bridges** (`rails._auto_bridges`): on-ground runs whose ballast foot is > 1 m over the graded ground for
+  <= 80 m drawn as bridges; `_abutments` at every bridge run's ends.
+* `SW_SHAPES_MAX` / `RAILSW_MAX` / `M.SW_MAX` 160.
+* **Contacts** (`rails.CONTACT_M` 2.2 m, `other_dist`, `contact_line`; shapes `nrailct1..64`, rows `railc`): a
+  track's rails within 2.2 m of another track's centre line outside the turnout zones, one collision shape per track;
+  `nrails.contactOff`: non-solid while a rail vehicle within 60 m runs on another track (its centre and +/- 6 m along
+  its motion nearer another loaded track than this line by 0.15 m) and none on this one; every 0.5 s.
+
+### Since (1.1.0)
+
+* **Rail guidance** (`nrailsguide.lua` game side, `lua/vehicle/extensions/nrailsGuide.lua` vehicle side, Ctrl+Shift+B):
+  each wheel pulled to its place across the track by a critically damped 2.5 Hz spring per physics step
+  (`obj:applyForceVector` on its hub nodes), capped at 6 m/s2 of its share of the mass, let go past 0.6 m; the track
+  round each vehicle sent every 0.4 s, a turnout's unset routes left out.
+* **Map** (`nrailsmap.lua`; `NRailsMapLayer/Menu/Tab.vue`, `nrailsMapParts.js` async, four hook lines in `EarthMap.vue`;
+  `core.lua`'s init hook gives the anchor's geodesy): loaded tracks as lat / lon, a click snapped to a track,
+  itinerary (`nrailsui.setItinerary`) or far heading (`nrailsroute.findToward`, again every 5 s), teleport + snap.
+* **Signals** (`rails._signals`, `nrailsswitch.lamps`): SNCF-style protection / advance / yard signals.
+* **Crossings** open while the player drives a rail vehicle (`railVehicleNear`, `RAILX_PLAYER_OFF`).
+* **Twin tunnels** (`rails.tile_tubes`): tubes made from the whole tunnel runs round the tile, cut to the tile.
+* `switches.SPLIT_M` 3.3 (2.5 m round the path).
+
 ## Known limits
 
 * Short road bridges over tracks: a deck climbs at most 6 % from abutments that keep the ground's height, so a

@@ -44,6 +44,7 @@
         <polyline v-if="routeDone" class="route-done" :points="routeDone" />
         <polyline v-if="routeAhead" class="route-line-casing" :points="routeAhead" />
         <polyline v-if="routeAhead" class="route-line" :points="routeAhead" />
+        <NRailsMapLayer :view="view" :w="w" :h="h" :screen="screen" :engine-lua="engineLua" />  <!-- NRails hook (the railways) -->
         <g v-for="g in grid" :key="g.key">
           <line :x1="g.x1" :y1="g.y1" :x2="g.x2" :y2="g.y2" :class="g.cls" />
           <text v-if="g.label" :x="g.lx" :y="g.ly" class="grid-label">{{ g.label }}</text>
@@ -130,6 +131,7 @@
             <span class="layer-hint">(world to city zoom)</span></label>
         </div>
       </div>
+      <NRailsMapTab :engine-lua="engineLua" />  <!-- NRails hook (the railways) -->
       <button v-if="!embedded" class="map-btn close" @click="close" title="Close (Esc / M)">Close</button>
     </div>
 
@@ -143,6 +145,7 @@
       <div class="ctx-item" @click="ctxGps">Set GPS destination</div>
       <div class="ctx-item" @click="ctxSave">Save this place</div>
       <div v-if="state.gps" class="ctx-item" @click="clearGps">Clear GPS</div>
+      <NRailsMapMenu :key="ctx.lat + ',' + ctx.lon" :ctx="ctx" :engine-lua="engineLua" @close="closeCtx" />  <!-- NRails hook (the railways) -->
     </div>
 
     <!-- the GPS destination -->
@@ -260,6 +263,7 @@ import { useEvents } from "@/services/events"
 import { vBngOnUiNav } from "@/common/directives"
 import * as mm from "./mapmath.js"
 import layerData from "./maplayers.js"
+import { NRailsMapLayer, NRailsMapMenu, NRailsMapTab } from "./nrailsMapParts.js"   // NRails hook (the railways)
 
 const props = defineProps({ embedded: { type: Boolean, default: false } })
 const embedded = props.embedded

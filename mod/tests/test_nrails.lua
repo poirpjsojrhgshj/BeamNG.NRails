@@ -344,6 +344,12 @@ do
   _G.getPlayerVehicle = old
 end
 
+-- The crossings' slabs while the player drives a train: render-only however far; another train: only near
+T.check(nrails.railVehicleNear({ { 0, 0, 0 } }, { { x = 5000, y = 0, speed = 0, player = true } }) == true,
+  'crossing: the player in a rail vehicle: every crossing open')
+T.check(nrails.railVehicleNear({ { 0, 0, 0 } }, { { x = 5000, y = 0, speed = 0 } }) == false,
+  'crossing: another train far away: solid')
+
 -- A teleport's provisional block: a rail vehicle held until the graded one, a car not, never longer than MAX_S
 do
   local veh = { getJBeamFilename = function() return 'tem2' end }
@@ -372,6 +378,24 @@ do
   nrails.labelLoading(lp)
   T.check(lp.PARTS[2][2] == 'roads, rails & buildings', 'loading line: rails named')
   T.check(lp.PARTS[1][2] == 'ground', 'loading line: the rest as it was')
+end
+
+-- the contacts: non-solid while a train runs on the other track and none on this one
+do
+  local own = { { 0, 0, 100, 0, 200, 0 } }
+  local other = { { 0, 4.5, 100, 2, 200, 0.6 } }
+  local function nearest(x, y)
+    return math.min(nrails._lineDist(own, x, y), nrails._lineDist(other, x, y))
+  end
+  local onOther = { x = 50, y = 3.25, vx = 10, vy = -0.25, speed = 10, rail = true }
+  local onOwn = { x = 60, y = 0, vx = 10, vy = 0, speed = 10, rail = true }
+  T.check(nrails.contactOff(own, { onOther }, nearest), 'contact: a train on the other track: this one off')
+  T.check(not nrails.contactOff(own, { onOwn }, nearest), 'contact: a train on this track: solid')
+  T.check(not nrails.contactOff(own, { onOther, onOwn }, nearest), 'contact: both: solid (multiplayer)')
+  T.check(not nrails.contactOff(own, {}, nearest), 'contact: nobody: solid')
+  T.check(not nrails.contactOff(own, { { x = 900, y = 0, vx = 0, vy = 0, speed = 0, rail = true } }, nearest),
+    'contact: a train far away: solid')
+  T.check(nrails._isCol('nrailct3') and not nrails._isDrawnOnly('nrailct3'), 'contact: a collision-only kind')
 end
 
 T.done('test_nrails')

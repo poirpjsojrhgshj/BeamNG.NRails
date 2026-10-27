@@ -3294,6 +3294,8 @@ class Connection:
             if self.s.set_gas_stations(msg.get("on")):
                 self.roads.close()
                 self.roads = roadsmod.Tracker()
+        elif isinstance(kind, str) and kind.startswith("nrails_"):     # NRails hook (OSM railways, routes)
+            __import__("nrails.hooks").hooks.on_message(self, msg)     # NRails hook
         else:
             log.debug("ignoring message type %r", kind)
 

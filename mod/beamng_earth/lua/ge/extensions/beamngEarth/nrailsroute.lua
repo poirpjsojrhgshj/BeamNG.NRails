@@ -188,6 +188,67 @@ function M.find(g, x, y, fx, fy, tx, ty)
   return out
 end
 
+-- A far destination (the map's itinerary to a place whose tracks are not loaded yet): the way to the reachable node
+-- of the loaded tracks nearest to (tx, ty) as the crow flies (Dijkstra over all the directed edges from the train,
+-- the same turn rule), so the train heads that way; asked again as tiles come (nrailsmap). Returns the path and the
+-- straight distance left from its end to (tx, ty).
+function M.findToward(g, x, y, fx, fy, tx, ty)
+  local s = M.nearest(g, x, y)
+  if not s then return nil end
+  local cosMax = math.cos(math.rad(M.TURN_DEG))
+  local function dir(a, b)
+    local dx, dy = g.x[b] - g.x[a], g.y[b] - g.y[a]
+    local l = math.sqrt(dx * dx + dy * dy)
+    if l < 1e-6 then return 0, 0, 0 end
+    return dx / l, dy / l, l
+  end
+  local function left(n) return math.sqrt((g.x[n] - tx) ^ 2 + (g.y[n] - ty) ^ 2) end
+  local h, dist, prev, edge = {}, {}, {}, {}
+  local fl = math.sqrt(fx * fx + fy * fy)
+  for _, b in ipairs(g.adj[s] or {}) do
+    local dx, dy, l = dir(s, b)
+    if fl < 1e-6 or (dx * fx + dy * fy) / fl > -0.2 then
+      local k = s .. '>' .. b
+      dist[k], edge[k] = l, { s, b }
+      push(h, { l, k })
+    end
+  end
+  local best, bestLeft = nil, left(s)
+  while #h > 0 do
+    local e = pop(h)
+    local c, k = e[1], e[2]
+    if c <= (dist[k] or math.huge) then
+      local a, b = edge[k][1], edge[k][2]
+      local lb = left(b)
+      if lb < bestLeft - 1 then best, bestLeft = k, lb end
+      local ax, ay = dir(a, b)
+      for _, n in ipairs(g.adj[b] or {}) do
+        if n ~= a then
+          local nx, ny, l = dir(b, n)
+          if ax * nx + ay * ny >= cosMax then
+            local k2 = b .. '>' .. n
+            local c2 = c + l
+            if c2 < (dist[k2] or math.huge) then
+              dist[k2], prev[k2], edge[k2] = c2, k, { b, n }
+              push(h, { c2, k2 })
+            end
+          end
+        end
+      end
+    end
+  end
+  if not best then return nil, bestLeft end
+  local out = {}
+  local k = best
+  while k do
+    local a, b = edge[k][1], edge[k][2]
+    table.insert(out, 1, { g.x[b], g.y[b] })
+    if not prev[k] then table.insert(out, 1, { g.x[a], g.y[a] }) end
+    k = prev[k]
+  end
+  return out, bestLeft
+end
+
 local function distToPath(x, y, path)
   local best = math.huge
   for i = 1, #path - 1 do

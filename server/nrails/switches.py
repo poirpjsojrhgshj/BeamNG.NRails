@@ -26,7 +26,8 @@ FAN_DEG = 20.0          # tracks leaving a node within this angle of each other:
 NODE_TOL_M = 1.0        # m: a track this close to a node passes through it
 ARM_M = 140.0           # m of each route looked at from the node (its zone)
 DIR_AT_M = 14.0         # m out along a route its direction is taken
-SPLIT_M = 3.0           # m between the routes' centre lines where the zone ends: the other route's rails ~2.2 m off the train's
+SPLIT_M = 3.3           # (3.0 before; the user, 2026-10-26: every rail within 2.5 m of the path off while passing:
+                        # 2.5 + half the gauge and a rail head, 0.8 m) m between the routes' centre lines where the zone ends: the other route's rails ~2.2 m off the train's
                         # centre, clear of its low parts (bogie frames, a WLD's snowplow 0.13 m over the rail top, ~1.5 m
                         # half wide): a track joining ours made no collision with the train any more (the user's run,
                         # 2026-10-26: "les aiguillages qui viennent sur notre voie ... ne generent pas de collisions").
