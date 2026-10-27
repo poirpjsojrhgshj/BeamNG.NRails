@@ -18,7 +18,16 @@
 local M = {}
 
 M.CHECK_S = 0.25
-M.CLOSE_M = 350
+-- The announcement (the user, 2026-10-27: "active-les comme c'est cense etre dans la vraie vie ... selon le type de
+-- voie et la vitesse"): as a real crossing's announcement point is fixed, set for the fastest trains of the line, the
+-- crossing closes when a train comes within ANNOUNCE_S of the LINE's speed (OSM's maxspeed of the track through it;
+-- else LINE_KMH by its kind) of it, slower trains so closing it longer, as in real life; a train faster than that
+-- (the player) at least ANNOUNCE_S of its own speed. Then the lights LIGHTS_BEFORE_S (France ~7-8 s, Switzerland 8 s)
+-- and the booms BOOM_MOVE_S down: closed some 10 s before the fastest train arrives (Switzerland: 5 s at least).
+M.ANNOUNCE_S = 25
+M.ANNOUNCE_MIN_M = 150
+M.LINE_KMH = { main = 120, branch = 90, light = 60, service = 40 }
+M.CLOSE_M = 350           -- (no line speed known: this, or CLOSE_AHEAD_S of the train's speed)
 M.CLOSE_AHEAD_S = 25
 M.LATERAL_M = 30
 M.OPEN_PAST_M = 30
@@ -62,13 +71,22 @@ function M.match(row, xings)
   return best
 end
 
--- Pure: does a rail vehicle {x, y, vx, vy, speed} want the crossing (row) closed?
+-- Pure: the announcement distance (m) of a crossing on a line of vmax km/h (nil: unknown).
+function M.announce(vmax)
+  if not vmax or vmax <= 0 then return M.CLOSE_M end
+  return math.max(M.ANNOUNCE_MIN_M, vmax / 3.6 * M.ANNOUNCE_S)
+end
+
+-- Pure: does a rail vehicle {x, y, vx, vy, speed[, pts]} want the crossing (row; row.vmax: its line's speed) closed?
 function M.wants(row, car)
+  for _, q in ipairs(car.pts or {}) do            -- (any part of a long vehicle on it or near: held closed)
+    if (row.at[1] - q[1]) ^ 2 + (row.at[2] - q[2]) ^ 2 <= M.OPEN_PAST_M * M.OPEN_PAST_M then return true end
+  end
   local dx, dy = row.at[1] - car.x, row.at[2] - car.y
   local d = math.sqrt(dx * dx + dy * dy)
   if d <= M.OPEN_PAST_M then return true end
   local s = car.speed or 0
-  if s < 0.5 or d > math.max(M.CLOSE_M, s * M.CLOSE_AHEAD_S) then return false end
+  if s < 0.5 or d > math.max(M.announce(row.vmax), s * M.CLOSE_AHEAD_S) then return false end
   local ux, uy = car.vx / s, car.vy / s
   local along = dx * ux + dy * uy
   if along <= 0 then return false end              -- (going away)
@@ -129,7 +147,7 @@ function M.list(tiles, now)
         if row.at and row.rd then
           local m = M.match(row, xings)
           local k, l = nil, false
-          if m then k, l = M.kind(m[3], m[4]) end
+          if m then k, l = M.kind(m[3], m[4]); row.vmax = tonumber(m[5]) end
           out[#out + 1] = { row = row, key = key(row), kind = k, lights = l, osm = m ~= nil }
         end
       end

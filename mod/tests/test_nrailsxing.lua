@@ -27,6 +27,10 @@ do
   T.check(not X.wants(row, { x = -300, y = 200, vx = 20, vy = 0, speed = 20 }), 'xing: a train on another line does not')
   T.check(X.wants(row, { x = -10, y = 0, vx = 0, vy = 0, speed = 0 }), 'xing: a train standing on it holds it')
   T.check(not X.wants(row, { x = -1000, y = 0, vx = 5, vy = 0, speed = 5 }), 'xing: a slow train far: not yet')
+  local fast = { at = row.at, rd = row.rd, hw = row.hw, d0 = row.d0, d1 = row.d1, vmax = 160 }
+  T.check(math.abs(X.announce(160) - 160 / 3.6 * X.ANNOUNCE_S) < 1e-9 and X.announce(20) == X.ANNOUNCE_MIN_M,
+    'xing: the announcement from the line speed')
+  T.check(X.wants(fast, { x = -1000, y = 0, vx = 5, vy = 0, speed = 5 }), 'xing: a 160 km/h line: closed 1.1 km ahead even for a slow train')
   T.check(X.wants(row, { x = -900, y = 0, vx = 40, vy = 0, speed = 40 }), 'xing: a fast train far: already')
 end
 

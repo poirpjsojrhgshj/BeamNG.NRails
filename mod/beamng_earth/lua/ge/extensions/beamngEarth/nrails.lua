@@ -73,9 +73,14 @@ local function onTile(key, t, data)
   -- the turnouts: which route of which turnout each "nrailswN" shape is
   -- (t.swNeed: each "nrailswN" shape's need {{turnout id, route}, ...}; an older server's data: one route each)
   t.swNeed, t.swWalk, t.swSolid = {}, {}, {}
-  t.ctLines, t.ctWalk, t.ctSolid = {}, {}, {}
+  t.ctLines, t.ctCore, t.ctWalk, t.ctSolid = {}, {}, {}, {}
   if type(data.railc) == 'table' then
-    for _, c in ipairs(data.railc) do if c.what and type(c.lines) == 'table' then t.ctLines[c.what] = c.lines end end
+    for _, c in ipairs(data.railc) do
+      if c.what and type(c.lines) == 'table' then
+        t.ctLines[c.what] = c.lines
+        t.ctCore[c.what] = type(c.core) == 'table' and c.core or c.lines
+      end
+    end
   end
   if type(data.railsw) == 'table' and data.railsw[1] then
     t.railsw = data.railsw
@@ -99,7 +104,7 @@ local function onTile(key, t, data)
       local off = false
       if isCt(what) then
         t.ctWalk[what] = w
-        local ok, o = pcall(M.contactOff, t.ctLines[what])
+        local ok, o = pcall(M.contactOff, t.ctCore[what], M.activeWays and M.activeWays.ways, M.activeWays and M.activeWays.cars)
         off = ok and o == true
         t.ctSolid[what] = not off
       end
@@ -173,6 +178,32 @@ function M.updateSwitches()
   end
 end
 
+-- A rail vehicle's probe points along it (the user's run, 2026-10-27: a long locomotive's rear bogie still on the
+-- blades when its centre had left the turnout's zone: the turnout set under it, the rear bogie on the other route):
+-- its centre, both bogies (BOGIE_IN_M in from its ends) and both ends, {{x, y}, ...}. Pure.
+M.BOGIE_IN_M = 3.0
+function M.probes(x, y, fx, fy, hl)
+  local l = math.sqrt(fx * fx + fy * fy)
+  if l < 1e-6 or not hl then return { { x, y } } end
+  fx, fy = fx / l, fy / l
+  local b = math.max(0, hl - M.BOGIE_IN_M)
+  return { { x, y }, { x + fx * b, y + fy * b }, { x - fx * b, y - fy * b }, { x + fx * hl, y + fy * hl },
+    { x - fx * hl, y - fy * hl } }
+end
+
+-- A vehicle's half length (m, its spawn box), kept per vehicle id.
+M._hl = {}
+function M.halfLength(v, id)
+  if id and M._hl[id] then return M._hl[id] end
+  local ok, hl = pcall(function()
+    local e = v:getSpawnWorldOOBB():getHalfExtents()
+    return math.max(e.x, e.y, e.z)
+  end)
+  hl = (ok and type(hl) == 'number' and hl > 0.5 and hl < 60) and hl or 8
+  if id then M._hl[id] = hl end
+  return hl
+end
+
 -- The rail vehicles and the player in the scene, scanned once every SCENE_S for the turnouts and the level crossings
 -- alike (one pass over the objects, not one per user: the CPU cost of the mod each frame kept low):
 -- { x, y, z, vx, vy, speed, player, rail } rows.
@@ -198,12 +229,14 @@ function M.scene(now)
     local vx, vy = 0, 0
     if okv and vel then vx, vy = vel.x or 0, vel.y or 0 end
     local fx, fy = nil, nil                         -- (the way it faces: a train stopped still sees its next turnout)
-    if isPlayer then
+    if isPlayer or isRail then
       local okd, d = pcall(dirOf, v)
       if okd and d then fx, fy = d.x, d.y end
     end
-    out[#out + 1] = { x = p.x, y = p.y, z = p.z, vx = vx, vy = vy, speed = math.sqrt(vx * vx + vy * vy),
+    local row = { x = p.x, y = p.y, z = p.z, vx = vx, vy = vy, speed = math.sqrt(vx * vx + vy * vy),
       fx = fx, fy = fy, player = isPlayer, rail = isRail, id = id }
+    if isRail and fx then row.pts, row.hl = M.probes(p.x, p.y, fx, fy, M.halfLength(v, id)) end
+    out[#out + 1] = row
   end
   if be and be.getObjectCount then
     for i = 0, be:getObjectCount() - 1 do
@@ -263,7 +296,7 @@ end
 M.CT_NEAR_M = 60
 M.CT_PROBE_M = 6
 M.CT_SAME_M = 0.15
-M.CT_CHECK_S = 0.5
+M.CT_CHECK_S = 0.25
 
 local function lineDist(lines, x, y)
   local best = math.huge
@@ -281,48 +314,184 @@ local function lineDist(lines, x, y)
 end
 M._lineDist = lineDist
 
--- Pure but for nearest (x, y -> the distance to the nearest loaded track, default M.nearestRail's): is the contact
--- (its lines) to be non-solid for these rail vehicles ({x, y, vx, vy, speed, rail})?
-function M.contactOff(lines, cars, nearest)
-  if not lines or not lines[1] then return false end
-  cars = cars or railVehiclePositions and railVehiclePositions() or {}
-  nearest = nearest or function(x, y)
-    local r = M.nearestRail(x, y, nil, 6)
-    return r and r.dist or math.huge
-  end
-  local other, own = false, false
-  for _, c in ipairs(cars) do
-    if c.rail ~= false and lineDist(lines, c.x, c.y) <= M.CT_NEAR_M then
-      local probes = { { c.x, c.y } }
-      local s = c.speed or 0
-      if s > 0.3 then
-        local ux, uy = c.vx / s, c.vy / s
-        probes[2] = { c.x + ux * M.CT_PROBE_M, c.y + uy * M.CT_PROBE_M }
-        probes[3] = { c.x - ux * M.CT_PROBE_M, c.y - uy * M.CT_PROBE_M }
+-- v2 (the user's run, 2026-10-27 on a high-speed line: a 280 m crossover lying between the two main tracks still
+-- solid, the train derailed on it at speed): the contacts follow every rail vehicle's WAY, not its neighbourhood.
+-- M.updateWays (every CT_CHECK_S) follows each train along the tracks as its turnouts are set (nrailsroute.follow),
+-- AHEAD_S of its speed ahead (AHEAD_MIN_M at least) and its length behind: a contact whose own samples (core) lie on
+-- such a way (CT_ON_M, over CT_ON_SHARE of them) is solid, as is one a vehicle stands on; every other one near a rail
+-- vehicle (CT_FAR_M) is not: made non-solid kilometres ahead of a fast train, the collision rebuilt in time. With no
+-- rail vehicle near, all solid (a train put on any of them).
+M.CT_ON_M = 0.6
+M.CT_ON_SHARE = 0.4
+M.CT_FAR_M = 3000
+M.AHEAD_S = 40
+M.AHEAD_MIN_M = 500
+M.BEHIND_M = 60
+M.WAY_GROUP_M = 400
+
+-- Pure: is a contact (core: flat x, y lists) on a way (ways: {{ {x, y}, ... }, ...})?
+local function box(pts, flat)
+  local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+  if flat then
+    for _, l in ipairs(pts) do
+      for i = 1, #l - 1, 2 do
+        local x, y = l[i], l[i + 1]
+        if x < x0 then x0 = x end
+        if x > x1 then x1 = x end
+        if y < y0 then y0 = y end
+        if y > y1 then y1 = y end
       end
-      local votes = 0
-      for _, p in ipairs(probes) do
-        if lineDist(lines, p[1], p[2]) <= nearest(p[1], p[2]) + M.CT_SAME_M then votes = votes + 1 end
-      end
-      if votes * 2 > #probes then own = true else other = true end
+    end
+  else
+    for _, q in ipairs(pts) do
+      if q[1] < x0 then x0 = q[1] end
+      if q[1] > x1 then x1 = q[1] end
+      if q[2] < y0 then y0 = q[2] end
+      if q[2] > y1 then y1 = q[2] end
     end
   end
-  return other and not own
+  return x0, y0, x1, y1
+end
+
+function M.onWays(core, ways)
+  local cx0, cy0, cx1, cy1 = box(core or {}, true)
+  local near = {}
+  for _, w in ipairs(ways or {}) do
+    local x0, y0, x1, y1 = box(w, false)
+    if x0 <= cx1 + 1 and x1 >= cx0 - 1 and y0 <= cy1 + 1 and y1 >= cy0 - 1 then near[#near + 1] = w end
+  end
+  if not near[1] then return false end
+  ways = near
+  local n, on = 0, 0
+  for _, l in ipairs(core or {}) do
+    for i = 1, #l - 1, 2 do
+      n = n + 1
+      local x, y = l[i], l[i + 1]
+      for _, w in ipairs(ways or {}) do
+        local hit = false
+        for j = 1, #w - 1 do
+          local ax, ay, bx, by = w[j][1], w[j][2], w[j + 1][1], w[j + 1][2]
+          if math.abs(x - ax) < 60 and math.abs(y - ay) < 60 then
+            local dx, dy = bx - ax, by - ay
+            local L2 = dx * dx + dy * dy
+            local t = L2 > 1e-9 and math.max(0, math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)) or 0
+            if (x - ax - t * dx) ^ 2 + (y - ay - t * dy) ^ 2 <= M.CT_ON_M * M.CT_ON_M then hit = true; break end
+          end
+        end
+        if hit then on = on + 1; break end
+      end
+    end
+  end
+  return n > 0 and on >= M.CT_ON_SHARE * n
+end
+
+-- Pure: is the contact (core) to be non-solid, given the trains' ways and the rail vehicles ({x, y, pts})?
+function M.contactOff(core, ways, cars)
+  if not core or not core[1] then return false end
+  local near = false
+  for _, c in ipairs(cars or {}) do
+    if c.rail ~= false then
+      local d = lineDist(core, c.x, c.y)
+      if d <= M.CT_FAR_M then near = true end
+      for _, q in ipairs(c.pts or { { c.x, c.y } }) do
+        if lineDist(core, q[1], q[2]) <= M.CT_ON_M then return false end   -- (a vehicle stands on it)
+      end
+    end
+  end
+  if not near then return false end
+  return not M.onWays(core, ways)
+end
+
+-- The ways of the rail vehicles (see above): M.activeWays = { ways = {...}, cars = {...}, player = way }.
+local graphCache = { at = -100, sig = nil, g = nil }
+local function graphNow(now)
+  if now - graphCache.at < 2.0 and graphCache.g then return graphCache.g end
+  local route = require('beamngEarth/nrailsroute')
+  local n, sig = 0, 0
+  for key, t in pairs(roads.extTiles()) do
+    if t.railLines and not t.ghost then n = n + 1; sig = sig + #key * 7 + #t.railLines end
+  end
+  local s = n .. ':' .. sig
+  if graphCache.sig ~= s or not graphCache.g then
+    graphCache.g = route.graph(route.rows(roads.extTiles()))
+    graphCache.sig = s
+  end
+  graphCache.at = now
+  return graphCache.g
+end
+
+-- At a node with several ways on: the one a turnout there is set to (its set route's line nearest the way 15 m on).
+local function pickBySwitches(g, route)
+  return function(b, a, cands)
+    local bx, by = g.x[b], g.y[b]
+    local sw = nil
+    for _, s in ipairs(M._swList or {}) do
+      if s.at and (s.at[1] - bx) ^ 2 + (s.at[2] - by) ^ 2 <= 64 then sw = s; break end
+    end
+    if not sw then return nil end
+    local r = sw.routes and sw.routes[switch.current(sw)]
+    local line = r and (r.line or r.arm)
+    if not line then return nil end
+    local best, bd = nil, math.huge
+    for _, n in ipairs(cands) do
+      local x, y = route.ahead(g, b, n, 15)
+      local d = switch._distToLine(x, y, line)
+      if d < bd then best, bd = n, d end
+    end
+    return best
+  end
+end
+
+function M.ways(now, cars)
+  local route = require('beamngEarth/nrailsroute')
+  local g = graphNow(now)
+  local out = { ways = {}, cars = cars, player = nil }
+  if not g or not next(g.x) then return out end
+  local pick = pickBySwitches(g, route)
+  -- (one way per train, not per wagon: the player's first, then any rail vehicle further than WAY_GROUP_M from those
+  -- already followed or heading another way; the wagons between keep their contacts by their probes)
+  table.sort(cars, function(a, b) return (a.player and 1 or 0) > (b.player and 1 or 0) end)
+  local done = {}
+  local function grouped(c)
+    for _, d in ipairs(done) do
+      if (c.x - d.x) ^ 2 + (c.y - d.y) ^ 2 < M.WAY_GROUP_M * M.WAY_GROUP_M then
+        local s1, s2 = c.speed or 0, d.speed or 0
+        if s1 < 0.5 or s2 < 0.5 or (c.vx * d.vx + c.vy * d.vy) > 0.9 * s1 * s2 then return true end
+      end
+    end
+    return false
+  end
+  for _, c in ipairs(cars) do
+    if c.rail ~= false and (c.player or not grouped(c)) then
+      done[#done + 1] = c
+      local hx, hy = c.vx, c.vy
+      if (c.speed or 0) < 0.5 then hx, hy = c.fx or 0, c.fy or 0 end
+      local len = math.max(M.AHEAD_MIN_M, (c.speed or 0) * M.AHEAD_S)
+      local fwd = route.follow(g, c.x, c.y, hx, hy, len, pick)
+      local back = route.follow(g, c.x, c.y, -hx, -hy, (c.hl or 10) + M.BEHIND_M, pick)
+      out.ways[#out.ways + 1] = fwd
+      out.ways[#out.ways + 1] = back
+      if c.player then out.player = fwd end
+    end
+  end
+  return out
 end
 
 local sinceCt = stopwatch.new()
-function M.updateContacts()
+function M.updateContacts(now)
   if sinceCt() < M.CT_CHECK_S * 1000 then return end
   sinceCt = stopwatch.new()
-  local cars = nil
+  now = now or os.clock()
+  local cars = railVehiclePositions()
+  local ok, w = pcall(M.ways, now, cars)
+  M.activeWays = ok and w or { ways = {}, cars = cars }
   for key, t in pairs(roads.extTiles()) do
     if t.ctWalk and next(t.ctWalk) and not t.ghost then
-      cars = cars or railVehiclePositions()
-      for what, w in pairs(t.ctWalk) do
-        local solid = not M.contactOff(t.ctLines[what], cars)
+      for what, wk in pairs(t.ctWalk) do
+        local solid = not M.contactOff(t.ctCore[what], M.activeWays.ways, cars)
         if solid ~= t.ctSolid[what] then
           t.ctSolid[what] = solid
-          roads.extRemake(key, t, what, w, not solid)
+          roads.extRemake(key, t, what, wk, not solid)
         end
       end
     end

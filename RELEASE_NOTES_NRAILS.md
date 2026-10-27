@@ -1,5 +1,41 @@
 # BeamNG.NRails — release notes
 
+## 1.2.1 — for BeamNG.Earth 1.6.3-beta
+
+**Works with BeamNG.Earth 1.6.3-beta** (included). Fixes and finishing touches on 1.2.0.
+
+### Turnouts and tracks touching yours
+- **Every bogie counts**: a turnout is locked while any part of any rail vehicle is on it (both bogies and both ends,
+  not the vehicle's centre): a long locomotive's rear bogie no longer finds the turnout thrown under it. The same for
+  the signals (*carré* while a bogie is on the turnout), the level crossings and the rail guidance (a whole 1.2 km
+  train guided).
+- **Only your way is solid where tracks touch**, decided ahead of the train: the mod follows each train along the
+  tracks as its turnouts are set, 40 s of its speed ahead (500 m at least), and every other track touching that way
+  (a long crossover between the two tracks of a high-speed line, tracks converging in a station) has its rails switched
+  off long before the train gets there. Kept solid where a vehicle stands on them (multiplayer, parked wagons).
+- **Fixed: curves that do not exist**: where a short piece meets a long straight (a crossover, a junction), the
+  track's rounding reached tens of metres along the straight and drifted across the tracks beside; it now stays at the
+  corner (a 300 m radius at most).
+- **Track diagram**: only the turnouts on your way are highlighted (the others drawn quietly), your way ahead shown,
+  and the window can be resized (its size is kept).
+
+### Terrain
+- **No ballast over a void**: wherever the ground beside the track lies under the ballast's foot, the ballast goes on
+  down to it as an embankment slope.
+- **Fixed: the bed's grading missing over whole stretches until the area was reloaded**: a map cell that could not be
+  downloaded at that moment left a hole in the track's profile, kept for the whole session. Cells are now asked again,
+  a profile made without one is never kept, and the bed is planned again once the cell comes.
+- **Twin-track tunnels**: one tube round both tracks along every stretch where they run side by side (a tube as wide
+  as one track sat between the two before, both tracks half in the rock, in some tiles).
+
+### Level crossings
+- **Announced as in real life**: the crossing closes when a train comes within 25 s *of the line's speed* (OpenStreetMap's
+  maxspeed of the track), as a real crossing's announcement point is set for the fastest trains of the line: slower
+  trains keep it closed longer. Then about 7 s of lights and 8 s of booms.
+
+### Map
+- **Further**: every railway within 100 km, plus the main lines and branches out to 200 km.
+
 ## 1.2.0 — for BeamNG.Earth 1.6.3-beta
 
 **Works with BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails). Everything

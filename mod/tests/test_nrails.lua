@@ -380,22 +380,21 @@ do
   T.check(lp.PARTS[1][2] == 'ground', 'loading line: the rest as it was')
 end
 
--- the contacts: non-solid while a train runs on the other track and none on this one
+-- the contacts (v2): solid on a train's way, off near trains elsewhere, solid with no train near
 do
-  local own = { { 0, 0, 100, 0, 200, 0 } }
-  local other = { { 0, 4.5, 100, 2, 200, 0.6 } }
-  local function nearest(x, y)
-    return math.min(nrails._lineDist(own, x, y), nrails._lineDist(other, x, y))
-  end
-  local onOther = { x = 50, y = 3.25, vx = 10, vy = -0.25, speed = 10, rail = true }
-  local onOwn = { x = 60, y = 0, vx = 10, vy = 0, speed = 10, rail = true }
-  T.check(nrails.contactOff(own, { onOther }, nearest), 'contact: a train on the other track: this one off')
-  T.check(not nrails.contactOff(own, { onOwn }, nearest), 'contact: a train on this track: solid')
-  T.check(not nrails.contactOff(own, { onOther, onOwn }, nearest), 'contact: both: solid (multiplayer)')
-  T.check(not nrails.contactOff(own, {}, nearest), 'contact: nobody: solid')
-  T.check(not nrails.contactOff(own, { { x = 900, y = 0, vx = 0, vy = 0, speed = 0, rail = true } }, nearest),
-    'contact: a train far away: solid')
+  local own = { { 0, 0, 50, 0, 100, 0, 150, 0, 200, 0 } }                -- (a crossover's samples between the tracks)
+  local wayOther = { { 0, 2.3 }, { 100, 2.3 }, { 200, 2.3 } }           -- (the main track beside it)
+  local wayOwn = { { -50, 0 }, { 100, 0 }, { 250, 0 } }
+  local carOther = { x = 50, y = 2.3, rail = true, pts = { { 50, 2.3 }, { 58, 2.3 }, { 42, 2.3 } } }
+  T.check(nrails.contactOff(own, { wayOther }, { carOther }), 'contact: a train on the main beside: the crossover off')
+  T.check(not nrails.contactOff(own, { wayOwn }, { carOther }), 'contact: a train whose way takes it: solid')
+  T.check(not nrails.contactOff(own, { wayOther }, { { x = 120, y = 0, rail = true, pts = { { 120, 0 } } }, carOther }),
+    'contact: a vehicle standing on it: solid')
+  T.check(not nrails.contactOff(own, {}, {}), 'contact: no train near: solid')
+  T.check(not nrails.contactOff(own, { wayOther }, { { x = 9000, y = 0, rail = true } }), 'contact: trains far: solid')
   T.check(nrails._isCol('nrailct3') and not nrails._isDrawnOnly('nrailct3'), 'contact: a collision-only kind')
+  local p = nrails.probes(0, 0, 1, 0, 8)
+  T.check(#p == 5 and p[2][1] == 5 and p[5][1] == -8, 'probes: centre, bogies, ends')
 end
 
 T.done('test_nrails')

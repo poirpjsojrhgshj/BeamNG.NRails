@@ -340,11 +340,8 @@ def rail_tile(frame, tx, ty, cell_fn, elev, chunks, md=None):
 
 def _safe(cell_fn):
     def get(k):
-        try:
-            return cell_fn(k)
-        except Exception as e:      # noqa: BLE001 - a cell not at hand: no track from it this time
-            log.debug("NRails cell %s: %s: %s", k, type(e).__name__, e)
-            return None
+        from nrails import canon        # (asked again a few times; a cell still missing: nothing made now is kept)
+        return canon.fetch_cell(cell_fn, k, log)
     return get
 
 
@@ -458,11 +455,67 @@ def cell_rail_plans(grader, key, plans):
     """grading.Grader._make_cell: the cell's road plans and the railway's bed (nrails.grade: the terrain cut and
     filled under and beside the track)."""
     try:
-        from nrails import grade
-        return plans + grade.cell_plans(grader, key)
+        from nrails import canon, grade
+        m0 = canon.misses()
+        mine = grade.cell_plans(grader, key)
+        if canon.misses() != m0:            # (a map cell missing: the bed planned again later, REPLAN_S)
+            _replan_later(grader, key)
+        return plans + mine
     except Exception as e:      # noqa: BLE001 - the roads' grading as upstream makes it
         _once(f"rail bed grading of cell {key}", e)
         return plans
+
+
+# A cell's rail bed planned while a map cell it needs could not be read is planned again every REPLAN_S (up to
+# REPLAN_TRIES times) and, once whole, put in the grader's plans of that cell in place of the holed one: the terrain
+# blocks and tiles made after that have the bed (those made before keep the hole until the area is made again).
+REPLAN_S = 20.0
+REPLAN_TRIES = 15
+_replan = {}
+_replan_lock = threading.Lock()
+_replan_thread = []
+
+
+def _replan_later(grader, key):
+    import weakref
+    with _replan_lock:
+        _replan[(id(grader), str(key))] = [weakref.ref(grader), key, 0]
+        if not _replan_thread:
+            th = threading.Thread(target=_replan_loop, name="nrails-replan", daemon=True)
+            _replan_thread.append(th)
+            th.start()
+
+
+def _replan_loop():
+    import time
+    from nrails import canon, grade
+    while True:
+        time.sleep(REPLAN_S)
+        with _replan_lock:
+            items = list(_replan.items())
+        for k, (ref, key, n) in items:
+            grader = ref()
+            if grader is None or n >= REPLAN_TRIES:
+                with _replan_lock:
+                    _replan.pop(k, None)
+                continue
+            try:
+                m0 = canon.misses()
+                mine = grade.cell_plans(grader, key)
+                whole = canon.misses() == m0
+            except Exception as e:      # noqa: BLE001
+                _once("rail bed planned again", e)
+                whole = False
+            with _replan_lock:
+                if not whole:
+                    _replan[k][2] = n + 1
+                    continue
+                _replan.pop(k, None)
+            with grader.lock:
+                old = grader.cells.get(key)
+                if old is not None:
+                    grader.cells[key] = [p for p in old if not str(p[0]).endswith(":rail")] + list(mine)
+            log.info("NRails: rail bed of cell %s planned again, whole", key)
 
 
 def is_rail_key(k):

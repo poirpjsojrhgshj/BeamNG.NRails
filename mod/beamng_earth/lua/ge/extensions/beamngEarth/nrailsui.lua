@@ -283,7 +283,10 @@ function M.drawSchema(now)
   now = now or os.clock()
   local wc = worldCache(p, now)
   local nf = N._nextFacing
-  local W, H = M.W, M.H
+  -- (the window's size is the user's: dragged at its corner, kept in the prefs; the canvas fills it. The user, 2026-10-27:
+  -- "agrandir la fenetre ou une meilleure definition des voies ... que la fenetre soit ajustable")
+  local W, H = M.prefs.schemaW or 480, M.prefs.schemaH or 300
+  M.W, M.H = W, H
   local view
   if M.prefs.view == 'turnout' and nf and nf.sw then
     local sw = nf.sw
@@ -296,9 +299,26 @@ function M.drawSchema(now)
   M.ptr = M.ptr or im.BoolPtr(true)
   M.ptr[0] = true
   im.SetNextWindowBgAlpha(0.8)
-  local title = nf and string.format('NRails - aiguillage dans %d m##nrailsschema', math.floor(nf.dist))
-    or 'NRails - voies / tracks##nrailsschema'
-  if im.Begin(title, M.ptr, im.WindowFlags_AlwaysAutoResize + (im.WindowFlags_NoFocusOnAppearing or 0)) then
+  pcall(function() im.SetNextWindowSize(im.ImVec2(W + 16, H + 78), im.Cond_FirstUseEver) end)
+  local title = nf and string.format('NRails - aiguillage dans %d m###nrailsschema', math.floor(nf.dist))
+    or 'NRails - voies / tracks###nrailsschema'
+  if im.Begin(title, M.ptr, (im.WindowFlags_NoFocusOnAppearing or 0)) then
+    local okA, avail = pcall(function()
+      local ws = im.GetWindowSize()
+      return { x = ws.x - 16, y = ws.y - 78 }
+    end)
+    if okA and avail and avail.x > 100 and avail.y > 80 then
+      local nw, nh = math.floor(avail.x), math.floor(avail.y)
+      if nw ~= M.prefs.schemaW or nh ~= M.prefs.schemaH then
+        M.prefs.schemaW, M.prefs.schemaH = nw, nh
+        M._prefsDirty = now
+      end
+      W, H = nw, nh
+      M.W, M.H = W, H
+      if view.ox == 0.5 then view.scale = W / (2 * (M.prefs.zoom or 350))
+      else view.scale = W / (M.SCHEMA_ARM_M + 80) end
+    end
+    if M._prefsDirty and now - M._prefsDirty > 1.5 then M._prefsDirty = nil; M.savePrefs() end
     if im.Button(M.prefs.view == 'turnout' and 'Vue zone' or 'Vue aiguillage') then
       M.prefs.view = M.prefs.view == 'turnout' and 'area' or 'turnout'; M.savePrefs()
     end
@@ -327,8 +347,15 @@ function M.drawSchema(now)
       end
     end
     im.ImDrawList_PushClipRect(dl, im.ImVec2(o.x, o.y), im.ImVec2(o.x + W, o.y + H), true)
-    local grey = col(im, 0.5, 0.5, 0.5, 0.9)
-    for _, flat in ipairs(view.lines) do poly(M.xy(flat, view.at, view.dir, view.scale, W, H, view.ox), grey, 1.5) end
+    local grey = col(im, 0.55, 0.55, 0.55, 0.9)
+    for _, flat in ipairs(view.lines) do poly(M.xy(flat, view.at, view.dir, view.scale, W, H, view.ox), grey, 2) end
+    -- our way ahead (the turnouts as set: nrails.activeWays.player), light, under the rest
+    local way = N.activeWays and N.activeWays.player
+    if way and way[2] then
+      local flat = {}
+      for _, q in ipairs(way) do flat[#flat + 1] = q[1]; flat[#flat + 1] = q[2] end
+      poly(M.xy(flat, view.at, view.dir, view.scale, W, H, view.ox), col(im, 0.55, 0.95, 0.65, 0.35), 7)
+    end
     if M.itin and M.itin.path then
       local flat = {}
       for _, q in ipairs(M.itin.path) do flat[#flat + 1] = q[1]; flat[#flat + 1] = q[2] end
@@ -336,18 +363,27 @@ function M.drawSchema(now)
     end
     local green, yellow, white = col(im, 0.2, 0.9, 0.3), col(im, 1.0, 0.85, 0.1), col(im, 0.85, 0.85, 0.85, 0.9)
     local pend = nf and nf.sw and switch.pending and switch.pick(nf.sw, switch.pending) or nil
+    -- only the turnouts on our way are highlighted (the user, 2026-10-27: "ceux qui ne sont pas sur notre trajet,
+    -- dessine-les mais ne les surligne pas"); the others drawn quietly, their set route a little brighter
+    local dim, dimSet = col(im, 0.5, 0.5, 0.5, 0.7), col(im, 0.45, 0.62, 0.5, 0.9)
     for _, sw in ipairs(view.sws) do
       local cur = switch.current(sw)
       local plan = switch.plan[sw.id]
+      local mine = (nf and nf.sw == sw) or (way and sw.at and route._distToPath(sw.at[1], sw.at[2], way) <= 4)
+        or (plan ~= nil)
       for i, r in ipairs(sw.routes or {}) do
         local pts = M.xy(M.routeLine(r), view.at, view.dir, view.scale, W, H, view.ox)
         if i ~= cur then
           local want = (plan == i) or (nf and nf.sw == sw and pend == i)
-          poly(pts, want and yellow or white, want and 3.5 or 2)
+          if mine then poly(pts, want and yellow or white, want and 3.5 or 2)
+          else poly(pts, want and yellow or dim, want and 3 or 1.5) end
         end
       end
       local r = sw.routes and sw.routes[cur]
-      if r then poly(M.xy(M.routeLine(r), view.at, view.dir, view.scale, W, H, view.ox), green, 4.5) end
+      if r then
+        poly(M.xy(M.routeLine(r), view.at, view.dir, view.scale, W, H, view.ox), mine and green or dimSet,
+          mine and 4.5 or 2)
+      end
       if sw.trunk and view.ox == 0.35 then poly(M.xy(sw.trunk, view.at, view.dir, view.scale, W, H, view.ox), white, 3) end
     end
     local q = M.xy({ p.x, p.y }, view.at, view.dir, view.scale, W, H, view.ox)[1]

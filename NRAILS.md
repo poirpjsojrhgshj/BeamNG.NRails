@@ -228,6 +228,26 @@ solid for cars only while no rail vehicle is near.
 * **Hub**: `nrails_version()` (NRAILS_VERSION) beside BeamNG.Earth's `VERSION` in the title, the header and the
   mod line; the signals setting.
 
+### 1.2.1
+
+* **Probes** (`nrails.probes`, `scene` rows' `pts`): centre, bogies (`BOGIE_IN_M` 3 m in from the ends), ends, from the
+  spawn box's half length; `nrailsswitch.occupied/conflict`, `nrailsxing.wants`, contacts use them.
+* **Contacts v2** (`nrails.ways`, `onWays`, `contactOff`; `nrailsroute.follow` / `ahead`; server rows' `core`): each
+  rail vehicle's way along the graph through the set turnouts (`AHEAD_S` 40 s, >= 500 m ahead, its length + 60 m
+  behind); a contact is solid when >= 40 % of its own samples lie within 0.6 m of a way or a probe stands on it, off
+  when a rail vehicle is within 3 km, solid otherwise. Every 0.25 s; the graph rebuilt when the tiles change (2 s).
+* **Chaikin corners** (`_corner_points`): each corner's segments cut at `ROUND_R_M` tan(angle / 2) (2 m .. a third).
+* **Skirts** (`_skirts`): ballast slopes 1:1.5 from the foot down to the tile's ground, up to 8 m, drawn only.
+* **Missing cells** (`canon.fetch_cell`, `note_miss`, `misses`; `hooks._safe`, `grade.cell_fn`): 3 retries (1, 3, 6 s);
+  a profile made with a miss not cached; `revisit.fault()`; `hooks._replan_later`: the cell's rail plans made again
+  every 20 s (15 times) and swapped into `grader.cells`.
+* **Twin tubes**: `TWIN_MIN_SAMPLES` 8 (not half of the run); a run's twin and lone stretches are tubes of their own.
+* **PN**: `nrailsxing.announce(vmax)` = vmax x 25 s (150 m at least); OSM's maxspeed per crossing node
+  (`osmrail.node_speed`).
+* **OSM**: `MAIN_RADIUS_KM` 200 (main / branch squares `railm_*`), `DAILY_MAX` 90.
+* **Diagram**: resizable (prefs `schemaW/H`), highlighted turnouts = on `activeWays.player` or planned.
+* `nrailsguide.CONSIST_M` 1200.
+
 ### 1.2.0
 
 * **Level crossings** (`nrailsxing.lua`; server `rails.crossing_bar` -> `railx_bars`): one row per road crossing

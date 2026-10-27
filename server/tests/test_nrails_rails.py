@@ -450,6 +450,64 @@ class TestContacts(unittest.TestCase):
         self.assertEqual(rails.contact_line(pts, np.zeros(101, bool)), [])
 
 
+class TestFixes121(unittest.TestCase):
+    def test_a_junction_kink_rounded_at_the_corner_only(self):
+        p = np.array([[0, 0], [40, 4.2], [340, 4.2]], float)
+        q = rails.chaikin(p)
+        self.assertLess(np.abs(q[q[:, 0] > 70, 1] - 4.2).max(), 1e-9)       # (75 m along the straight before)
+
+    def test_skirt_down_to_a_low_ground(self):
+        pts = np.c_[np.linspace(0, 40, 21), np.zeros(21), np.full(21, 10.0)]
+        nrm = np.tile([0.0, 1.0], (21, 1))
+        m = rails.Mesh((0, 0, 0))
+        g = FlatGround(lambda x, y: np.full_like(x, 6.0))
+        rails._skirts(m, pts, nrm, np.zeros(21, bool), g, 2.95, -1.1)
+        P = np.concatenate(m.P)
+        self.assertAlmostEqual(P[:, 2].min(), 6.0 - 0.1, places=6)
+        self.assertGreater(np.abs(P[:, 1]).max(), 2.95 + 1.5 * 2.8)
+        m2 = rails.Mesh((0, 0, 0))
+        rails._skirts(m2, pts, nrm, np.zeros(21, bool), FlatGround(lambda x, y: np.full_like(x, 9.5)), 2.95, -1.1)
+        self.assertTrue(m2.empty())                                          # (the ground over the foot: none)
+
+    def test_twin_tube_when_a_window_cuts_one_run_short(self):
+        n = 400
+        x = np.linspace(0, 800, n)
+        a = np.c_[x, np.zeros(n), np.full(n, 10.0)]
+        b = np.c_[x[:60], np.full(60, 6.4), np.full(60, 10.0)]             # (the other track's run: cut at 120 m)
+        tubes = rails.tunnel_tubes([(0, a, np.full(n, 2, np.int8)), (1, b, np.full(60, 2, np.int8))],
+                                   (-1000, -1000, 2000, 2000), None)
+        wide = [t for t in tubes if t["w"] > rails.TUNNEL_TRACK_W + 1]
+        self.assertTrue(wide, "a twin tube over the stretch both run")
+        self.assertFalse(any(abs(t["xy"][0, 1] - 6.4) < 0.5 and t["w"] <= rails.TUNNEL_TRACK_W for t in tubes),
+                         "no lone tube of the short run inside it")
+
+    def test_a_missing_cell_profile_not_kept(self):
+        from nrails import canon
+        calls = []
+
+        def bad(k):
+            calls.append(k)
+            raise OSError("circuit open")
+        old = canon.CELL_WAIT_S
+        canon.CELL_WAIT_S = (0.0,)
+        try:
+            m0 = canon.misses()
+            self.assertIsNone(canon.fetch_cell(bad, "k"))
+            self.assertEqual(len(calls), canon.CELL_RETRIES + 1)
+            self.assertEqual(canon.misses(), m0 + 1)
+            n = 0
+
+            def flaky(k):
+                nonlocal n
+                n += 1
+                if n < 2:
+                    raise OSError("once")
+                return "cell"
+            self.assertEqual(canon.fetch_cell(flaky, "k"), "cell")
+        finally:
+            canon.CELL_WAIT_S = old
+
+
 class TestCrossingBar(unittest.TestCase):
     def test_one_row_per_road_crossing_spanning_its_tracks(self):
         xs = [{"at": np.array([0.0, 4.5 * i]), "z": 0.5, "z_road": 0.25, "t": np.array([1.0, 0.0]),

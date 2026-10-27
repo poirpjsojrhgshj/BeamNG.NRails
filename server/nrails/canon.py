@@ -80,6 +80,46 @@ def _owned(frame, key, xy):
     return (la >= lat0) & (la < lat1) & (lo >= lon0) & (lo < lon1)
 
 
+# A map cell that could not be read while profiling (fetch_cell: asked CELL_RETRIES times): the profile made without
+# it is used but never kept (the user's runs, 2026-10-27: "absence de terrain sous le ballast ... general ...
+# reapparition du terrain apres rechargement": a cell missing once, the hole in the bed's grading stayed the whole run).
+CELL_RETRIES = 3
+CELL_WAIT_S = (1.0, 3.0, 6.0)
+_tl = threading.local()
+
+
+def note_miss():
+    """A cell needed by the profile being made could not be read (this thread)."""
+    _tl.miss = getattr(_tl, "miss", 0) + 1
+    try:
+        import revisit
+        revisit.fault()             # (nothing made now is persisted: upstream's road tiles and plans alike)
+    except Exception:       # noqa: BLE001
+        pass
+
+
+def misses():
+    return getattr(_tl, "miss", 0)
+
+
+def fetch_cell(cell_fn, k, log=None):
+    """cell_fn(k), asked again CELL_RETRIES times after a failure (CELL_WAIT_S apart); None and note_miss() when it
+    still fails."""
+    import time
+    last = None
+    for i in range(CELL_RETRIES + 1):
+        try:
+            return cell_fn(k)
+        except Exception as e:      # noqa: BLE001
+            last = e
+            if i < CELL_RETRIES:
+                time.sleep(CELL_WAIT_S[min(i, len(CELL_WAIT_S) - 1)])
+    if log is not None:
+        log.info("NRails: map cell %s not at hand (%s: %s): its track left out this time", k, type(last).__name__, last)
+    note_miss()
+    return None
+
+
 def cell_profile(frame, key, cell_fn, elev):
     """The CellProfile of map cell key (see above), cached. cell_fn(key): a cell's "roads" layer (None when not at
     hand); elev: the caller's, when there is no canonical one."""
@@ -101,7 +141,10 @@ def cell_profile(frame, key, cell_fn, elev):
         path = _disk_path(frame, key) if ce is not None else None
         got = _load(path) if path else None
         if got is None:
+            m0 = misses()
             got = _profile_cell(frame, key, cell_fn, use, rails)
+            if misses() != m0:
+                return got          # (a cell missing: used now, made again next time)
             if path:
                 _store(path, got)
         with _lock:

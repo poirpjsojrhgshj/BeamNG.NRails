@@ -1,4 +1,4 @@
-# BeamNG.NRails — 1.2.0
+# BeamNG.NRails — 1.2.1
 
 **For BeamNG.Earth 1.6.3-beta** (included: this download is BeamNG.Earth 1.6.3-beta + NRails).
 
@@ -33,7 +33,7 @@ real tunnels, over the real viaducts, across the real level crossings.
 
 ## What NRails adds to BeamNG.Earth
 
-| | BeamNG.Earth 1.6.3-beta alone | with BeamNG.NRails 1.2.0 |
+| | BeamNG.Earth 1.6.3-beta alone | with BeamNG.NRails 1.2.1 |
 |---|---|---|
 | Railway track | a track to drive cars on (sleepers and ballast solid) | track for **rail mods**: only the rails collide, the wheels' flanges run free |
 | Turnouts | both routes solid: a train picks a route by chance | **only the set route solid**, set by the train, your keys, a click on the diagram or an itinerary |

@@ -29,16 +29,20 @@ def _get():
     return _osm[0]
 
 
-def snapshot(g, lat, lon, slat, slon, r_km):
-    """The file's content: {"lines", "xings", "reach"} (pure given the graph)."""
-    r_m = r_km * 1000.0
+def snapshot(g, lat, lon, slat, slon, r_km, main_km=None):
+    """The file's content: {"lines", "xings", "reach"} (pure given the graph): reachable within main_km (r_km), the
+    sidings and light rail only within r_km."""
+    inner_m = r_km * 1000.0
+    r_m = max(r_km, main_km or 0) * 1000.0
     start = g.nearest(slat, slon, START_MAX_M) if slat is not None else None
     if start is not None:
         nodes = g.reachable(start, lat, lon, r_m)
     else:                       # (not on a track: every railway in the round, unconnected ones too)
         nodes = {n for n, (la, lo) in g.pos.items() if osmrail.dist_m(lat, lon, la, lo) <= r_m}
-    xings = [[r[1], r[2], r[3], r[4]] for nid, r in g.xings.items() if nid in nodes]
-    return {"lines": g.lines(nodes), "xings": xings, "reach": start is not None}
+    xings = [[r[1], r[2], r[3], r[4], osmrail.node_speed(g, nid)] for nid, r in g.xings.items() if nid in nodes]
+    lines = [l for l in g.lines(nodes) if l["k"] in ("main", "branch")
+             or osmrail.dist_m(lat, lon, *l["pts"][0]) <= inner_m]
+    return {"lines": lines, "xings": xings, "reach": start is not None}
 
 
 def _f(msg, k):
@@ -63,11 +67,12 @@ async def _area(daemon, msg):
         return
     slat, slon = _f(msg, "slat"), _f(msg, "slon")
     r_km = min(max(_f(msg, "r_km") or osmrail.RADIUS_KM, 5.0), 150.0)
+    main_km = min(max(_f(msg, "main_km") or osmrail.MAIN_RADIUS_KM, r_km), 300.0)
     loop, send, rid = daemon.loop, daemon.send, msg.get("id")
     out_dir = os.path.join(daemon.s.root, "nrails")
 
     def write(done, total, error=None):
-        snap = snapshot(_get().graph, lat, lon, slat, slon, r_km)
+        snap = snapshot(_get().graph, lat, lon, slat, slon, r_km, main_km)
         os.makedirs(out_dir, exist_ok=True)
         tmp = os.path.join(out_dir, FILE + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
@@ -82,7 +87,7 @@ async def _area(daemon, msg):
     def work():
         # (the file written after the first square, every WRITE_EVERY then, and the last: the game decodes each, 2 MB
         # for a 100 km round)
-        missing = _get().area(lat, lon, r_km,
+        missing = _get().area(lat, lon, r_km, main_km=main_km,
                               on_progress=lambda d, t: (d == 1 or d == t or d % WRITE_EVERY == 0) and write(d, t))
         if missing:
             write(-1, -1, f"{missing} square(s) not loaded (OpenStreetMap busy or offline: asked again later)")

@@ -74,12 +74,19 @@ local function distToLine(x, y, flat)
 end
 M._distToLine = distToLine
 
--- Is a rail vehicle in the turnout's zone (on any route's zone line within LOCK_M)? (except: a car not counted)
+-- A vehicle's probe points (its bogies and ends, nrails.scene: c.pts), or its centre.
+local function probes(c) return c.pts or { { c.x, c.y } } end
+M._probes = probes
+
+-- Is a rail vehicle in the turnout's zone (any of its probes on any route's zone line within LOCK_M)? (except: a car
+-- not counted)
 local function occupied(sw, cars, except)
   for _, c in ipairs(cars) do
     if c.rail ~= false and c ~= except then
-      for _, r in ipairs(sw.routes or {}) do
-        if distToLine(c.x, c.y, r.line) <= M.LOCK_M then return true end
+      for _, q in ipairs(probes(c)) do
+        for _, r in ipairs(sw.routes or {}) do
+          if distToLine(q[1], q[2], r.line) <= M.LOCK_M then return true end
+        end
       end
     end
   end
@@ -120,13 +127,15 @@ M._placeOn = placeOn
 function M.conflict(sw, cars, want)
   for _, c in ipairs(cars or {}) do
     if c.rail ~= false then
-      local inZone = false
-      for _, r in ipairs(sw.routes or {}) do
-        if distToLine(c.x, c.y, r.line) <= M.LOCK_M then inZone = true; break end
-      end
-      if inZone then
-        local on = placeOn(sw, c)
-        if on ~= want then return true end       -- (on the trunk at the zone: its body over the blades)
+      for _, q in ipairs(probes(c)) do            -- (every bogie, not the vehicle's centre alone)
+        local inZone = false
+        for _, r in ipairs(sw.routes or {}) do
+          if distToLine(q[1], q[2], r.line) <= M.LOCK_M then inZone = true; break end
+        end
+        if inZone then
+          local on = placeOn(sw, { x = q[1], y = q[2] })
+          if on ~= want then return true end     -- (on the trunk at the zone: its body over the blades)
+        end
       end
     end
   end

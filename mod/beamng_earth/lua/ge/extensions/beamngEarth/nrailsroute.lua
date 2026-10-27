@@ -285,6 +285,86 @@ function M.choices(switches, path)
   return out
 end
 
+-- The way a train runs from (x, y) heading (hx, hy) for len m, through the turnouts as they are set: a list of points
+-- {x, y}. At a node with more than one way on (never turning more than TURN_DEG), pick(node, from, candidates) chooses
+-- (a candidate node or nil); else (or nil) the straightest. Pure given pick.
+function M.follow(g, x, y, hx, hy, len, pick)
+  local s = M.nearest(g, x, y)
+  if not s then return {} end
+  local cosMax = math.cos(math.rad(M.TURN_DEG))
+  local function dir(a, b)
+    local dx, dy = g.x[b] - g.x[a], g.y[b] - g.y[a]
+    local l = math.sqrt(dx * dx + dy * dy)
+    if l < 1e-6 then return 0, 0, 0 end
+    return dx / l, dy / l, l
+  end
+  local hl = math.sqrt(hx * hx + hy * hy)
+  if hl < 1e-6 then return { { g.x[s], g.y[s] } } end
+  hx, hy = hx / hl, hy / hl
+  local a, b, best = s, nil, -2
+  for _, n in ipairs(g.adj[s] or {}) do
+    local dx, dy = dir(s, n)
+    local d = dx * hx + dy * hy
+    if d > best then b, best = n, d end
+  end
+  if not b or best < -0.2 then return { { g.x[s], g.y[s] } } end
+  local out = { { g.x[s], g.y[s] }, { g.x[b], g.y[b] } }
+  local _, _, L = dir(a, b)
+  local seen = { [a] = true, [b] = true }
+  while L < len do
+    local ax, ay = dir(a, b)
+    local cands = {}
+    for _, n in ipairs(g.adj[b] or {}) do
+      if n ~= a and not seen[n] then
+        local nx, ny = dir(b, n)
+        if ax * nx + ay * ny >= cosMax then cands[#cands + 1] = n end
+      end
+    end
+    if not cands[1] then break end
+    local nxt = nil
+    if #cands > 1 and pick then nxt = pick(b, a, cands) end
+    if not nxt then
+      local bs = -2
+      for _, n in ipairs(cands) do
+        local nx, ny = dir(b, n)
+        local d = ax * nx + ay * ny
+        if d > bs then nxt, bs = n, d end
+      end
+    end
+    local _, _, l = dir(b, nxt)
+    L = L + l
+    a, b = b, nxt
+    seen[b] = true
+    out[#out + 1] = { g.x[b], g.y[b] }
+  end
+  return out
+end
+
+-- Pure: the point `dist` m on from node b (coming from a) along the straightest way: x, y.
+function M.ahead(g, a, b, dist)
+  local cosMax = math.cos(math.rad(M.TURN_DEG))
+  local L = 0
+  for _ = 1, 64 do
+    if L >= dist then break end
+    local ax, ay = g.x[b] - g.x[a], g.y[b] - g.y[a]
+    local al = math.sqrt(ax * ax + ay * ay)
+    if al < 1e-6 then break end
+    ax, ay = ax / al, ay / al
+    local nxt, bs = nil, cosMax
+    for _, n in ipairs(g.adj[b] or {}) do
+      if n ~= a then
+        local nx, ny = g.x[n] - g.x[b], g.y[n] - g.y[b]
+        local nl = math.sqrt(nx * nx + ny * ny)
+        if nl > 1e-6 and (ax * nx + ay * ny) / nl >= bs then nxt, bs = n, (ax * nx + ay * ny) / nl end
+      end
+    end
+    if not nxt then break end
+    L = L + math.sqrt((g.x[nxt] - g.x[b]) ^ 2 + (g.y[nxt] - g.y[b]) ^ 2)
+    a, b = b, nxt
+  end
+  return g.x[b], g.y[b]
+end
+
 -- The rows of every loaded tile's lines (roads.extTiles), the ghosts left out.
 function M.rows(tiles)
   local out = {}

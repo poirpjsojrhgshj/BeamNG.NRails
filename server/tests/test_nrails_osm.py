@@ -52,7 +52,10 @@ class TestGraph(unittest.TestCase):
         s = osmmsg.snapshot(self.g, 47.0, 7.0, 47.0, 7.0, 10)
         self.assertTrue(s["reach"])
         self.assertEqual({l["id"] for l in s["lines"]}, {100, 101})
-        self.assertEqual(s["xings"], [[47.0, 7.001, "half", "yes"]])
+        self.assertEqual(s["xings"], [[47.0, 7.001, "half", "yes", None]])
+        self.assertEqual(osmrail.speed_of({"maxspeed": "100 mph"}), 160.9344)
+        self.assertEqual(osmrail.speed_of({"maxspeed": "FR:rail"}), None)
+        self.assertEqual(osmrail.speed_of({"maxspeed": "140"}), 140.0)
         self.assertEqual({l["k"] for l in s["lines"]}, {"main", "service"})
         far = osmmsg.snapshot(self.g, 47.0, 7.0, 46.0, 7.0, 10)  # (not on a track: everything in the round)
         self.assertFalse(far["reach"])
@@ -100,6 +103,21 @@ class TestCache(unittest.TestCase):
             o3 = osmrail.OsmRail(d, fetch=fetch)
             self.assertEqual(o3.area(47.0, 7.0, 10), 0)
             self.assertEqual(len(o3.graph.ways), 3)         # (a new day: asked again, the stale copy meanwhile)
+
+    def test_main_lines_further(self):
+        qs = []
+
+        def fetch(q):
+            qs.append(q)
+            return doc()
+        with tempfile.TemporaryDirectory() as d:
+            o = osmrail.OsmRail(d, fetch=fetch)
+            o.area(47.0, 7.0, 10, main_km=150)
+            inner = len(osmrail.squares(47.0, 7.0, 10))
+            self.assertEqual(sum('usage' not in q for q in qs), inner)
+            self.assertGreater(sum('usage' in q for q in qs), 0)
+            s = osmmsg.snapshot(o.graph, 47.0, 7.0, 47.0, 7.0, 0.05, 150)
+            self.assertEqual({l['k'] for l in s['lines']}, {'main'})     # (the siding beyond 50 m left out)
 
     def test_rate_limited_pauses_and_keeps_the_stale_copy(self):
         def fetch(q):

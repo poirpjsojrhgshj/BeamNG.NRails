@@ -27,6 +27,7 @@ M.ON_PATH_M = 15          -- m: an OSM route's point this close to a loaded trac
 M.SNAP_AFTER_M = 120      -- m round the teleport's point a track is looked for after it
 M.SNAP_WAIT_S = 120
 M.OSM_KM = 100
+M.OSM_MAIN_KM = 200       -- the main lines and branches only, out to this
 M.OSM_AGAIN_KM = 40       -- the player this far from the last ask's centre: OSM's railways asked again
 M.OSM_MAX_PTS = 20000     -- points sent to the map a view at most (the far zoom levels: the main lines first)
 
@@ -129,7 +130,7 @@ function M.prepareOsm(data)
   local xings = {}
   for _, x in ipairs(type(data.xings) == 'table' and data.xings or {}) do
     if type(x) == 'table' and x[1] then
-      xings[#xings + 1] = { lat = x[1], lon = x[2], barrier = x[3], light = x[4] }
+      xings[#xings + 1] = { lat = x[1], lon = x[2], barrier = x[3], light = x[4], vmax = tonumber(x[5]) }
     end
   end
   return { lines = lines, xings = xings, reach = data.reach == true }
@@ -209,7 +210,8 @@ function M.requestOsm(force)
   local t = N.nearestRail and N.nearestRail(p.x, p.y, p.z, 200)
   if t then slat, slon = toLatLon(t.x, t.y) end
   M.osmStatus = { asked = true, done = 0, total = 0, n = M.osmStatus.n, reach = M.osmStatus.reach }
-  send({ type = 'nrails_osm', id = osmId, lat = lat, lon = lon, slat = slat, slon = slon, r_km = M.OSM_KM })
+  send({ type = 'nrails_osm', id = osmId, lat = lat, lon = lon, slat = slat, slon = slon, r_km = M.OSM_KM,
+    main_km = M.OSM_MAIN_KM })
   return true
 end
 function M.refreshOsm() return M.requestOsm(true) end
@@ -260,7 +262,7 @@ function M.xingsLocal()
   local rows_ = {}
   for _, x in ipairs(M.osm.xings) do
     local okx, wx, wy = pcall(function() return a:geodeticToEnu(x.lat, x.lon, 0) end)
-    if okx and wx then rows_[#rows_ + 1] = { wx, wy, x.barrier, x.light } end
+    if okx and wx then rows_[#rows_ + 1] = { wx, wy, x.barrier, x.light, x.vmax } end
   end
   M._xingCache = { a = a, rows = rows_ }
   return rows_

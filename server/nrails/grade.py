@@ -40,10 +40,8 @@ def cell_plans(grader, key):
     frame = grader.frame
 
     def cell_fn(k):
-        try:
-            return grader.md.cell(k, layers=("roads",), kind="demand").layers.get("roads")
-        except Exception:       # noqa: BLE001 - a cell not at hand: no track from it
-            return None
+        from nrails import canon        # (asked again a few times; still missing: the profile is not kept)
+        return canon.fetch_cell(lambda q: grader.md.cell(q, layers=("roads",), kind="demand").layers.get("roads"), k)
     if rails._on("BNGE_RAIL_CANON"):
         # (the cell's samples of the shared profile, nrails.canon: the road tiles draw the same)
         from nrails import canon

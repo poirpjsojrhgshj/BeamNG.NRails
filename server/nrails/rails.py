@@ -69,6 +69,7 @@ TUNNEL_FLOOR_M = 0.55           # m the tube's floor lies under the rail top (th
 TUNNEL_TRACK_W = 4.0            # m of tube floor per track between the shoulders (roadmesh.TUNNEL_SHOULDER each side)
 TUNNEL_H = 7.0                  # m from the floor to the vault's top (a single track's tube, catenary room)
 TUNNEL_TWIN_M = 7.5             # tracks in tunnels this close (centre to centre): one tube round both
+TWIN_MIN_SAMPLES = 8            # ... over this many samples at least (16 m)
 TUNNEL_COVER_M = 15.0           # m under the ground a tunnel lies with no portal known (a chain cut by its window)
 TUNNEL_HOLE_MARGIN_M = 0.5      # m around the tube a portal's terrain hole reaches (roads.TUNNEL_HOLE_MARGIN)
 PORTAL_UP_READ_M = 16.0         # m into the hill the ground read for a portal face's height (the mouth's cut)
@@ -180,9 +181,48 @@ def profile():
 
 # --- geometry helpers ---------------------------------------------------------------------------------------------
 
-def chaikin(xy, iterations=CHAIKIN_ITER):
-    """Corner cutting (1/4, 3/4) keeping both ends: a polyline with rounded corners (k, 2). Pure."""
+# The rounding stays at the corner (the user's run, 2026-10-27, a station's throat: "cette courbe n'existe pas dans la
+# vraie vie"): Chaikin cuts a quarter of each segment, so a crossover's few-degree kink between a 40 m piece and a
+# 300 m straight became a curve reaching 75 m along the straight, metres off it, across the tracks beside. Each
+# corner's segments are first cut where a ROUND_R_M curve through that corner would leave them (R tan(angle / 2),
+# CORNER_MIN_M at least, a third of the segment at most): a sharp corner of a sparsely mapped curve still rounded wide
+# (as before), a small kink at a junction only over the few metres it needs.
+ROUND_R_M = 300.0
+CORNER_MIN_M = 2.0
+
+
+def _corner_points(xy):
+    """xy (k, 2) with points added either side of every inner vertex, where the rounding starts (see above). Pure."""
     p = np.asarray(xy, np.float64)
+    if len(p) < 3:
+        return p
+    seg = np.diff(p, axis=0)
+    L = np.hypot(*seg.T)
+    cut = np.zeros(len(p))
+    for k in range(1, len(p) - 1):
+        if L[k - 1] < 1e-9 or L[k] < 1e-9:
+            continue
+        u, v = seg[k - 1] / L[k - 1], seg[k] / L[k]
+        ang = math.acos(max(-1.0, min(1.0, float(u @ v))))
+        cut[k] = max(CORNER_MIN_M, ROUND_R_M * math.tan(min(ang, 2.6) / 2))
+    out = [p[0]]
+    for k in range(len(p) - 1):
+        a, b = p[k], p[k + 1]
+        if L[k] < 1e-9:
+            continue
+        u = seg[k] / L[k]
+        if k > 0 and cut[k] > 0:
+            out.append(a + u * min(cut[k], L[k] / 3))
+        if k + 1 < len(p) - 1 and cut[k + 1] > 0:
+            out.append(b - u * min(cut[k + 1], L[k] / 3))
+        out.append(b)
+    return np.asarray(out)
+
+
+def chaikin(xy, iterations=CHAIKIN_ITER):
+    """Corner cutting (1/4, 3/4) keeping both ends: a polyline with rounded corners (k, 2), each corner rounded within
+    ROUND_R_M curve's length of it. Pure."""
+    p = _corner_points(xy)
     for _ in range(iterations):
         if len(p) < 3:
             return p
@@ -1721,12 +1761,59 @@ def _ballast_collision(mesh, pts, nrm, bridge, tilt=None, room=None):
                     -BALLAST_TOP_M + BRIDGE_PARAPET[1])
 
 
+# Skirts (the user's runs, 2026-10-27: "absence de terrain encore sous le ballast ... pas un probleme ponctuel mais
+# general", a trench along the line): where the ground beside the track (the tile's graded ground) lies under the
+# ballast's foot, the ballast goes on down to it as an embankment slope of SKIRT_SLOPE (horizontal per vertical), up to
+# SKIRT_MAX_M deep: no ballast hanging over a gap, whatever the terrain block's grading did there. Drawn only (the
+# collision is the ballast's own).
+SKIRT_SLOPE = 1.5
+SKIRT_MAX_M = 8.0
+SKIRT_MIN_M = 0.04
+
+
+def _skirts(mesh, pts, nrm, bridge, ground, w_foot, z_foot):
+    """The embankment slopes from the ballast's foot (w_foot m either side, z_foot m under the rail top) down to the
+    ground, on both sides of the samples off bridges."""
+    pts = np.asarray(pts, np.float64)
+    n = len(pts)
+    if n < 2:
+        return
+    for sgn in (-1.0, 1.0):
+        ex, ey = pts[:, 0] + nrm[:, 0] * sgn * w_foot, pts[:, 1] + nrm[:, 1] * sgn * w_foot
+        ez = pts[:, 2] + z_foot
+        drop = ez - np.asarray(ground.z(ex, ey), np.float64)
+        for _ in range(2):                          # (the ground where the slope meets it, not at the foot)
+            d = np.clip(drop, 0.0, SKIRT_MAX_M)
+            ox, oy = ex + nrm[:, 0] * sgn * d * SKIRT_SLOPE, ey + nrm[:, 1] * sgn * d * SKIRT_SLOPE
+            drop = ez - np.asarray(ground.z(ox, oy), np.float64)
+        d = np.clip(drop, 0.0, SKIRT_MAX_M)
+        d[bridge] = 0.0
+        ox, oy = ex + nrm[:, 0] * sgn * d * SKIRT_SLOPE, ey + nrm[:, 1] * sgn * d * SKIRT_SLOPE
+        oz = ez - d - 0.1                           # (a little into the ground: no seam of light)
+        on = d > SKIRT_MIN_M
+        seg = np.flatnonzero(on[:-1] | on[1:])
+        if not len(seg):
+            continue
+        P, T, UV, ins = [], [], [], []
+        for i in seg:
+            k = len(P)
+            P += [[ex[i], ey[i], ez[i]], [ex[i + 1], ey[i + 1], ez[i + 1]], [ox[i + 1], oy[i + 1], oz[i + 1]],
+                  [ox[i], oy[i], oz[i]]]
+            T += [[k, k + 1, k + 2], [k, k + 2, k + 3]]
+            UV += [[0, 0], [1, 0], [1, d[i + 1] * 0.6], [0, d[i] * 0.6]]
+            c = [(pts[i, 0] + pts[i + 1, 0]) / 2, (pts[i, 1] + pts[i + 1, 1]) / 2, (ez[i] + ez[i + 1]) / 2 - 3.0]
+            ins += [c, c]
+        mesh.add(np.asarray(P), np.asarray(T), np.asarray(UV, np.float64), MAT_BALLAST, inside=np.asarray(ins))
+
+
 def _ballast(mesh, pts, nrm, bridge, tilt=None, ground=None, room=None, avoid=()):
     top = -BALLAST_TOP_M
     w0 = BALLAST_HALF_M
     w1 = w0 + BALLAST_SLOPE * BALLAST_DEPTH_M
     section = [(-w1, top - BALLAST_DEPTH_M), (-w0, top), (w0, top), (w1, top - BALLAST_DEPTH_M)]
     _sweep(mesh, pts, nrm, section, MAT_BALLAST, closed=False, uv_scale=0.5, tilt=tilt)
+    if ground is not None:
+        _skirts(mesh, pts, nrm, np.asarray(bridge, bool), ground, w1, top - BALLAST_DEPTH_M)
     if room is None:
         room = (np.full(len(pts), np.inf), np.full(len(pts), np.inf))
     for lo, hi in _bridge_runs(pts, bridge):        # a concrete slab under the ballast on bridges, parapets, piers
@@ -1957,6 +2044,19 @@ def other_dist(rail_xy, own, centres, reach=3.0):
             d = np.hypot(*(p[:, None, :] - (a[None] + t[..., None] * ab[None])).transpose(2, 0, 1)).min(axis=1)
             out[k0:k0 + 512] = np.minimum(out[k0:k0 + 512], d)
     return out
+
+
+def contact_core(pts, mask):
+    """The track's centre line (flat x, y, cm) over the samples of mask themselves (and one either side), one list
+    per run: what the mod matches against the trains' ways. Pure."""
+    if not mask.any():
+        return []
+    grow = mask.copy()
+    grow[1:] |= mask[:-1]
+    grow[:-1] |= mask[1:]
+    idx = np.flatnonzero(grow)
+    return [[round(float(v), 2) for v in pts[part, :2].ravel()]
+            for part in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1) if len(part) >= 2]
 
 
 def contact_line(pts, mask, every=3):
@@ -2449,7 +2549,10 @@ def tunnel_tubes(heavy, box, ground=None):
                 continue
             d, c = nearest(r["pts"][:, :2], o["pts"][:, :2])
             twin = (d > 0.5) & (d <= TUNNEL_TWIN_M)
-            if twin.mean() < 0.5:
+            # (a count, not a share of r: a tile's window cuts a long tunnel's runs anywhere, and a run cut short
+            # beside a whole one failed "half of it" in some tiles: two tubes one in the other there, a twin tube in
+            # the next, the user's run 2026-10-27 in a 2 km LGV tunnel)
+            if int(twin.sum()) < TWIN_MIN_SAMPLES:
                 continue
             xy[twin] = (xy[twin] + c[twin]) / 2
             w[twin] = TUNNEL_TRACK_W + d[twin]
@@ -2457,7 +2560,15 @@ def tunnel_tubes(heavy, box, ground=None):
             o["skip"] = back <= TUNNEL_TWIN_M if o["skip"] is None else (o["skip"] | (back <= TUNNEL_TWIN_M))
             break
         keep = np.ones(len(xy), bool) if r["skip"] is None else ~r["skip"]
+        # (a run's twin stretch and its lone ones: tubes of their own widths, meeting on a shared sample; one tube of
+        # the run's median width made a twin stretch a lone track's tube between the two tracks, both half outside)
+        wide = w > TUNNEL_TRACK_W + 0.5
+        pieces = []
         for part in _runs(keep):
+            cuts = np.flatnonzero(np.diff(wide[part].astype(np.int8)) != 0) + 1
+            for k0, k1 in zip(np.r_[0, cuts], np.r_[cuts, len(part)]):
+                pieces.append(part[max(k0 - 1, 0):k1])
+        for part in pieces:
             if len(part) < 2:
                 continue
             first, last = part[0] == 0, part[-1] == len(xy) - 1
@@ -2880,7 +2991,7 @@ def build(frame, tx, ty, cells, elev, chunks=(), with_crossings=None, trams_on=N
             continue
         what = f"nrailct{len(ct_keep) + 1}"
         ct_keep.append((what, m.arrays()))
-        ct_rows.append({"what": what, "lines": contact_line(cpts, mask)})
+        ct_rows.append({"what": what, "lines": contact_line(cpts, mask), "core": contact_core(cpts, mask)})
     if n >= SW_SHAPES_MAX and len(sw_meshes) > n:
         _log_once(f"turnouts: {len(sw_meshes)} zone shapes in a tile, {SW_SHAPES_MAX} switched, the rest always solid")
     sig_rows = _signals(vis, sws, heavy, centres, (x0, y0, x1, y1)) if sws and _on("BNGE_RAIL_SIGNALS") else []

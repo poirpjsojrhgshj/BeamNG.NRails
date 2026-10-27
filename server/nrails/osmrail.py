@@ -29,11 +29,12 @@ URLS = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.system
 USER_AGENT = "BeamNG.NRails (BeamNG.Earth fork; railways for the in-game map; github.com/poirpjsojrhgshj/BeamNG.NRails)"
 TILE_DEG = 1.0              # the cache's squares (1 deg: 111 x ~75 km at 47 N)
 CACHE_DAYS = 30
-DAILY_MAX = 60              # requests a day at most (the rules: <= 100)
+DAILY_MAX = 90              # requests a day at most (the rules: <= 100; a first 200 km area: ~35)
 PAUSE_429_S = 60.0          # a 429 / 504: the server left alone this long
 RETRY_S = 3600.0            # a failed square asked again after this long
 TIMEOUT_S = 240
 RADIUS_KM = 100.0
+MAIN_RADIUS_KM = 200.0      # the main lines and branches only from RADIUS_KM out to this (their own squares)
 SIMPLIFY_M = 8.0            # m the map's lines keep to the ways (Douglas-Peucker)
 KINDS = ("rail", "light_rail", "narrow_gauge")
 KEEP_TAGS = ("railway", "usage", "service", "maxspeed", "electrified", "gauge", "bridge", "tunnel", "name", "ref")
@@ -41,11 +42,14 @@ REVERSE_DEG = 100.0         # a route never turns more than this at a node (no r
 R_EARTH = 6371008.8
 
 
-def query(s, w, n, e):
+def query(s, w, n, e, main_only=False):
     """The Overpass query of one square: its railways (ways, their node ids and geometry, a few tags) and its level
-    crossings (nodes, their tags)."""
+    crossings (nodes, their tags); main_only: the main lines and branches alone (usage main / branch), no crossing."""
     kinds = "|".join(KINDS)
     bb = f"{s:.4f},{w:.4f},{n:.4f},{e:.4f}"
+    if main_only:
+        return (f'[out:json][timeout:{TIMEOUT_S - 20}];way["railway"~"^({kinds})$"]["usage"~"^(main|branch)$"]({bb});'
+                f'out body geom qt;')
     return (f'[out:json][timeout:{TIMEOUT_S - 20}];(way["railway"~"^({kinds})$"]({bb});'
             f'node["railway"="level_crossing"]({bb}););out body geom qt;')
 
@@ -97,6 +101,7 @@ class Graph:
 
     def __init__(self):
         self.pos, self.adj, self.ways, self.xings = {}, {}, {}, {}
+        self.node_ways = {}     # node id -> [way ids] (a level crossing's line: its speed)
 
     def add(self, data):
         for wid, nodes, geo, tags in data.get("ways", ()):
@@ -105,6 +110,7 @@ class Graph:
             self.ways[wid] = (nodes, tags)
             for nid, (la, lo) in zip(nodes, geo):
                 self.pos[nid] = (la, lo)
+                self.node_ways.setdefault(nid, []).append(wid)
             for a, b in zip(nodes, nodes[1:]):
                 if a != b:
                     self.adj.setdefault(a, set()).add(b)
@@ -198,6 +204,34 @@ class Graph:
         return None, math.inf
 
 
+def speed_of(tags):
+    """A way's maxspeed in km/h (OSM's "120", "120 mph", "FR:rail"...), or None."""
+    v = str(tags.get("maxspeed") or "").strip().lower()
+    num = ""
+    for ch in v:
+        if ch.isdigit() or ch == ".":
+            num += ch
+        elif num:
+            break
+    if not num:
+        return None
+    try:
+        s = float(num)
+    except ValueError:
+        return None
+    return s * 1.609344 if "mph" in v else s
+
+
+def node_speed(g, nid):
+    """The highest maxspeed (km/h) of the ways through node nid, or None."""
+    best = None
+    for wid in g.node_ways.get(nid, ()):
+        s = speed_of(g.ways[wid][1])
+        if s is not None and (best is None or s > best):
+            best = s
+    return best
+
+
 def kind_of(tags):
     """The map's line kind: "main" (a line), "branch", "service" (sidings, yards, spurs), "light"."""
     if tags.get("railway") in ("light_rail", "narrow_gauge"):
@@ -247,8 +281,8 @@ class OsmRail:
         self.graph = Graph()
         self.loaded = set()
 
-    def _path(self, s, w):
-        return os.path.join(self.dir, f"rail_{s:+08.3f}_{w:+09.3f}.json.gz")
+    def _path(self, s, w, main_only=False):
+        return os.path.join(self.dir, f"rail{'m' if main_only else ''}_{s:+08.3f}_{w:+09.3f}.json.gz")
 
     def _day(self):
         p = os.path.join(self.dir, "requests.json")
@@ -260,9 +294,16 @@ class OsmRail:
             d = {}
         return p, today, (d.get("n", 0) if d.get("day") == today else 0)
 
-    def square(self, s, w):
+    def square(self, s, w, main_only=False):
         """One square's data: from the disk when fresh, else asked (None: not now; the rules or the network)."""
-        p = self._path(s, w)
+        if main_only:                               # (a whole square on disk already holds its main lines)
+            full = self._path(s, w)
+            try:
+                if self.clock() - os.path.getmtime(full) < CACHE_DAYS * 86400:
+                    main_only = False
+            except OSError:
+                pass
+        p = self._path(s, w, main_only)
         try:
             if self.clock() - os.path.getmtime(p) < CACHE_DAYS * 86400:
                 with gzip.open(p, "rt", encoding="utf-8") as f:
@@ -276,7 +317,7 @@ class OsmRail:
         except (OSError, ValueError):
             pass
         now = self.clock()
-        if now < self.paused_until or now - self.failed.get((s, w), -1e18) < RETRY_S:
+        if now < self.paused_until or now - self.failed.get((s, w, main_only), -1e18) < RETRY_S:
             return stale
         dp, today, n = self._day()
         if n >= DAILY_MAX:
@@ -285,14 +326,14 @@ class OsmRail:
         with open(dp, "w", encoding="utf-8") as f:
             json.dump({"day": today, "n": n + 1}, f)
         try:
-            doc = self.fetch(query(s, w, s + TILE_DEG, w + TILE_DEG))
+            doc = self.fetch(query(s, w, s + TILE_DEG, w + TILE_DEG, main_only))
         except RateLimited:
             self.paused_until = self.clock() + PAUSE_429_S
-            self.failed[(s, w)] = self.clock()
+            self.failed[(s, w, main_only)] = self.clock()
             return stale
         except Exception as e:      # noqa: BLE001 - offline, timeout: the stale copy or nothing
             log.info("nrails osm: square %s,%s: %s", s, w, e)
-            self.failed[(s, w)] = self.clock()
+            self.failed[(s, w, main_only)] = self.clock()
             return stale
         data = parse(doc)
         tmp = p + ".tmp"
@@ -301,20 +342,22 @@ class OsmRail:
         os.replace(tmp, p)
         return data
 
-    def area(self, lat, lon, r_km=RADIUS_KM, on_progress=None):
-        """The squares round (lat, lon) loaded into the graph, nearest first (on_progress(done, total) after each);
-        the number missing."""
+    def area(self, lat, lon, r_km=RADIUS_KM, on_progress=None, main_km=None):
+        """The squares round (lat, lon) loaded into the graph, nearest first (on_progress(done, total) after each):
+        whole within r_km, their main lines only out to main_km; the number missing."""
         with self.lock:
-            sq = squares(lat, lon, r_km)
+            inner = set(squares(lat, lon, r_km))
+            sq = squares(lat, lon, max(r_km, main_km or 0))
             missing = 0
             for i, (s, w) in enumerate(sq):
-                if (s, w) not in self.loaded:
-                    data = self.square(s, w)
+                main_only = (s, w) not in inner
+                if (s, w, False) not in self.loaded and (not main_only or (s, w, True) not in self.loaded):
+                    data = self.square(s, w, main_only)
                     if data is None:
                         missing += 1
                     else:
                         self.graph.add(data)
-                        self.loaded.add((s, w))
+                        self.loaded.add((s, w, main_only))
                 if on_progress:
                     on_progress(i + 1, len(sq))
             return missing

@@ -86,4 +86,15 @@ do
   T.check(nf ~= nil and nf.sw == sw, 'diagram: a stopped train still sees the turnout it faces')
 end
 
+-- every bogie: a long vehicle whose centre left the zone but whose rear bogie is still on the blades locks it
+do
+  local sw = { id = 'x', at = { 0, 0 }, dir = { 1, 0 }, def = 0, trunk = { -60, 0, 0, 0 },
+    routes = { { line = { 0, 0, 30, 0 }, arm = { 0, 0, 200, 0 } }, { line = { 0, 0, 30, 3 }, arm = { 0, 0, 200, 20 } } } }
+  local car = { x = 40, y = 0, vx = 5, vy = 0, rail = true }
+  T.check(not SW.conflict(sw, { car }, 2), 'switch: centre only: no lock (the old way)')
+  car.pts = { { 40, 0 }, { 48, 0 }, { 32, 0 }, { 51, 0 }, { 29, 0 } }
+  T.check(SW.conflict(sw, { car }, 2), 'switch: the rear bogie on the blades: locked (rear bogie)')
+  T.check(SW.occupied(sw, { car }), 'switch: occupied by the rear bogie')
+end
+
 T.done('test_nrailsroute')
